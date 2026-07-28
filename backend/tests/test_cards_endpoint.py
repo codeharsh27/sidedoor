@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from app.db.models import Card, Company, EvidenceItem, FixabilityFlag, GapCluster, RoleMatch, User
+from app.db.models import Card, Company, EvidenceItem, FixabilityFlag, GapCluster, RoleMatch, User, UserProfile
 
 
 @pytest.fixture
@@ -136,6 +136,18 @@ class TestCardsEndpoints:
         res_ev = MagicMock()
         res_ev.scalars.return_value.all.return_value = [ev_item]
 
+        # Mock UserProfile fetch inside loop
+        profile = UserProfile(
+            user_id=user_id,
+            raw_resume_text="...",
+            parsed_skills=["Python"],
+            parsed_domains=["Backend"],
+            parsed_project_summary="...",
+            embedding_vector=[0.1] * 384,
+        )
+        res_profile_loop = MagicMock()
+        res_profile_loop.scalar_one_or_none.return_value = profile
+
         # Order of database execute queries:
         # 1. select User
         # 2. select Company
@@ -146,6 +158,7 @@ class TestCardsEndpoints:
         # 6. select RoleMatch
         # 7. select JobPosting
         # 8. select EvidenceItems (limit 3)
+        # 9. select UserProfile (inside loop)
         mock_db_session.execute.side_effect = [
             res_user,
             res_comp,
@@ -155,6 +168,7 @@ class TestCardsEndpoints:
             res_role,
             res_job,
             res_ev,
+            res_profile_loop,
         ]
 
         response = client.get(f"/api/v1/company/{company_id}/cards?user_id={user_id}")
@@ -170,6 +184,9 @@ class TestCardsEndpoints:
         assert data[0]["role_match"]["job_title"] == "Backend Developer"
         assert len(data[0]["evidence"]) == 1
         assert data[0]["evidence"][0]["source_type"] == "reddit"
+        assert "You listed Python" in data[0]["explanation_string"]
+        assert data[0]["top_matching_skill"] == "Python"
+        assert data[0]["gap_domain"] == "performance slow"
 
     def test_get_cards_user_not_found(self, client, mock_db_session):
         """Should raise 404 if user doesn't exist."""
@@ -236,3 +253,56 @@ class TestCardsEndpoints:
             json={"status": "invalid_status"},
         )
         assert response.status_code == 422
+
+    def test_get_card_prompt_success(self, client, mock_db_session):
+        """Should return formatted prompt text for card."""
+        company_id = uuid.uuid4()
+        card_id = uuid.uuid4()
+        user_id = uuid.uuid4()
+
+        card = Card(
+            id=card_id,
+            company_id=company_id,
+            user_id=user_id,
+            status="new",
+        )
+        res_card = MagicMock()
+        res_card.scalar_one_or_none.return_value = card
+
+        res_company = MagicMock()
+        res_company.scalar_one_or_none.return_value = "Stripe"
+
+        # Mock generate_handoff_prompt return text
+        prompt_text = "Formatted Mentor Prompt Markdown"
+        
+        with patch("app.services.prompt_generator.generate_handoff_prompt") as mock_gen:
+            mock_gen.return_value = prompt_text
+            
+            mock_db_session.execute.side_effect = [res_card, res_company]
+            
+            response = client.get(
+                f"/api/v1/company/{company_id}/cards/{card_id}/prompt?user_id={user_id}"
+            )
+            
+            assert response.status_code == 200
+            data = response.json()
+            assert data["card_id"] == str(card_id)
+            assert data["company_name"] == "Stripe"
+            assert data["prompt_text"] == prompt_text
+            mock_gen.assert_called_once_with(company_id, card_id, user_id, mock_db_session)
+
+    def test_get_card_prompt_not_found(self, client, mock_db_session):
+        """Should return 404 if card doesn't exist for user + company."""
+        company_id = uuid.uuid4()
+        card_id = uuid.uuid4()
+        user_id = uuid.uuid4()
+
+        res_card = MagicMock()
+        res_card.scalar_one_or_none.return_value = None
+        mock_db_session.execute.return_value = res_card
+
+        response = client.get(
+            f"/api/v1/company/{company_id}/cards/{card_id}/prompt?user_id={user_id}"
+        )
+        assert response.status_code == 404
+        assert "not found" in response.json()["detail"]

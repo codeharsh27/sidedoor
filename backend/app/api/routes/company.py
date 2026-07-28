@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field, HttpUrl, field_validator, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import Company, EvidenceItem, JobPosting, Card, GapCluster, FixabilityFlag, RoleMatch, User
+from app.db.models import Company, EvidenceItem, JobPosting, Card, GapCluster, FixabilityFlag, RoleMatch, User, UserProfile
 from app.db.session import get_db_session
 from app.services.security import validate_url, InvalidURLError, SSRFBlockedError
 from app.services.scan_orchestrator import scan_company
@@ -154,6 +154,9 @@ class CardResponse(BaseModel):
     fixability: FixabilityCardDetail
     role_match: RoleMatchCardDetail | None
     evidence: list[EvidenceCardDetail]
+    explanation_string: str
+    top_matching_skill: str
+    gap_domain: str
 
 
 class CardStatusUpdate(BaseModel):
@@ -393,6 +396,26 @@ async def get_cards(
                     }
                 )
 
+        # Load user skills/domains to compute matching template string
+        user_skills = []
+        user_domains = []
+        stmt_profile = select(UserProfile).where(UserProfile.user_id == user_uuid)
+        profile = (await db.execute(stmt_profile)).scalar_one_or_none()
+        if profile:
+            user_skills = profile.parsed_skills
+            user_domains = profile.parsed_domains
+
+        from app.services.prompt_generator import get_matching_skill_and_domain, render_explanation
+
+        evidence_text_combined = " ".join(ev["raw_text"] for ev in evidence_details)
+        matching_skill, gap_domain = get_matching_skill_and_domain(
+            user_skills,
+            user_domains,
+            evidence_text_combined or cluster.label,
+            cluster.label,
+        )
+        explanation_string = render_explanation(matching_skill, gap_domain)
+
         # Update shown_at timestamp on display
         if card.shown_at is None:
             card.shown_at = datetime.now(timezone.utc)
@@ -418,6 +441,9 @@ async def get_cards(
                 },
                 "role_match": role_match_detail,
                 "evidence": evidence_details,
+                "explanation_string": explanation_string,
+                "top_matching_skill": matching_skill,
+                "gap_domain": gap_domain,
             }
         )
 
@@ -463,4 +489,70 @@ async def update_card_status(
         "status": "success",
         "card_id": str(card.id),
         "new_status": card.status,
+    }
+
+
+class CardPromptResponse(BaseModel):
+    card_id: uuid.UUID
+    company_name: str
+    prompt_text: str
+
+
+@router.get("/{company_id}/cards/{card_id}/prompt", response_model=CardPromptResponse)
+async def get_card_prompt(
+    company_id: str,
+    card_id: str,
+    user_id: str,
+    db: AsyncSession = Depends(get_db_session),
+) -> dict:
+    """Generate and retrieve the tailored build prompt for a card."""
+    try:
+        company_uuid = uuid.UUID(company_id)
+        card_uuid = uuid.UUID(card_id)
+        user_uuid = uuid.UUID(user_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid UUID format",
+        )
+
+    # Verify card belongs to company and user
+    stmt_card = select(Card).where(
+        Card.id == card_uuid,
+        Card.company_id == company_uuid,
+        Card.user_id == user_uuid,
+    )
+    res_card = await db.execute(stmt_card)
+    card = res_card.scalar_one_or_none()
+    if not card:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Card with ID {card_id} not found for this user and company",
+        )
+
+    # Fetch company name
+    stmt_company = select(Company.name).where(Company.id == company_uuid)
+    company_name = (await db.execute(stmt_company)).scalar_one_or_none()
+    if not company_name:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Company not found",
+        )
+
+    from app.services.prompt_generator import generate_handoff_prompt
+
+    try:
+        prompt_text = await generate_handoff_prompt(
+            company_uuid, card_uuid, user_uuid, db
+        )
+    except ValueError as val_err:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(val_err),
+        )
+
+    return {
+        "card_id": card_uuid,
+        "company_name": company_name,
+        "prompt_text": prompt_text,
     }
