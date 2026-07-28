@@ -1,71 +1,88 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 import { Navbar } from './components/Navbar';
-import { HeroSection } from './components/HeroSection';
-import { ScanPreviewSection } from './components/ScanPreviewSection';
-import { WorkflowSection } from './components/WorkflowSection';
 import { Footer } from './components/Footer';
-import { DashboardView } from './components/DashboardView';
+import { LandingPage } from './pages/LandingPage';
+import { DashboardPage } from './pages/DashboardPage';
+import { ResumeUploadModal } from './components/ResumeUploadModal';
 import type { UserProfile } from './types/schema';
-import { mockUserProfile } from './mock/mockData';
 
 export function App() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'landing' | 'dashboard'>('landing');
-  const [searchedCompany, setSearchedCompany] = useState<string>('PostHog');
+  
+  // Global App State
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
-  const handleSearchCompany = (companyQuery: string) => {
-    setSearchedCompany(companyQuery);
-    // Smooth scroll down to scan preview section
-    setTimeout(() => {
-      const el = document.getElementById('scan-preview');
-      if (el) {
-        el.scrollIntoView({ behavior: 'smooth' });
+  // Sync navbar with current route
+  useEffect(() => {
+    if (location.pathname === '/dashboard') {
+      setActiveTab('dashboard');
+    } else {
+      setActiveTab('landing');
+    }
+  }, [location.pathname]);
+
+  const handleTabChange = (tab: 'landing' | 'dashboard') => {
+    if (tab === 'dashboard') {
+      if (!userProfile) {
+        // Require resume upload before dashboard
+        setIsModalOpen(true);
+      } else {
+        navigate('/dashboard');
       }
-    }, 100);
-  };
-
-  const handleUnlockDashboard = (profile: UserProfile) => {
-    setUserProfile(profile);
-    setActiveTab('dashboard');
+    } else {
+      navigate('/');
+    }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', position: 'relative' }}>
-      <Navbar 
-        activeTab={activeTab} 
-        setActiveTab={(tab) => {
-          if (tab === 'dashboard' && !userProfile) {
-            setUserProfile(mockUserProfile);
-          }
-          setActiveTab(tab);
-          window.scrollTo({ top: 0, behavior: 'smooth' });
-        }} 
-      />
+  const handleProfileSuccess = (profile: UserProfile) => {
+    setUserProfile(profile);
+    setIsModalOpen(false);
+    navigate('/dashboard');
+  };
 
-      <main style={{ flex: 1 }}>
-        {activeTab === 'landing' ? (
-          <>
-            <HeroSection onSearchCompany={handleSearchCompany} />
-            <ScanPreviewSection 
-              searchedCompany={searchedCompany} 
-              onUnlockDashboard={handleUnlockDashboard} 
-              onSelectCompany={handleSearchCompany}
-            />
-            <WorkflowSection />
-          </>
-        ) : (
-          <DashboardView 
-            userProfile={userProfile} 
-            onBackToLanding={() => {
-              setActiveTab('landing');
-              window.scrollTo({ top: 0, behavior: 'smooth' });
-            }} 
+  const isDashboard = location.pathname === '/dashboard';
+
+  return (
+    <div style={{ 
+      height: isDashboard ? '100vh' : 'auto',
+      minHeight: '100vh', 
+      display: 'flex', 
+      flexDirection: 'column', 
+      position: 'relative',
+      overflow: isDashboard ? 'hidden' : 'visible'
+    }}>
+      {!isDashboard && (
+        <Navbar 
+          activeTab={activeTab} 
+          setActiveTab={handleTabChange} 
+        />
+      )}
+
+      <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: isDashboard ? 'hidden' : 'visible' }}>
+        <Routes>
+          <Route 
+            path="/" 
+            element={<LandingPage onTriggerUpload={() => setIsModalOpen(true)} />} 
           />
-        )}
+          <Route 
+            path="/dashboard" 
+            element={<DashboardPage globalProfile={userProfile} />} 
+          />
+        </Routes>
       </main>
 
-      <Footer />
+      {!isDashboard && <Footer />}
+
+      <ResumeUploadModal 
+        isOpen={isModalOpen} 
+        onClose={() => setIsModalOpen(false)} 
+        onSuccess={handleProfileSuccess} 
+      />
     </div>
   );
 }

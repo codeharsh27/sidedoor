@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Terminal, ArrowRight, Database, Sparkles, 
+  Terminal, ArrowRight, Database, 
   ShieldCheck, Copy, Check, ExternalLink, Code, Send,
   AlertCircle, CheckCircle, Flame, RefreshCw, Search, Lock, Loader2
 } from 'lucide-react';
@@ -705,7 +705,7 @@ export const ScanPreviewSection: React.FC<ScanPreviewSectionProps> = ({
                       <span>Ready to walk through the Side Door at {currentData.name}?</span>
                     </div>
                     <button onClick={handleUnlock} className="btn-primary" style={{ padding: '10px 20px', fontSize: '0.92rem', backgroundColor: 'var(--accent-gold)', borderColor: 'var(--accent-bright)' }}>
-                      <Sparkles size={16} />
+                      <ArrowRight size={16} />
                       <span>Enter Live Dashboard</span>
                     </button>
                   </div>
@@ -783,7 +783,7 @@ export const ScanPreviewSection: React.FC<ScanPreviewSectionProps> = ({
                   className="btn-primary" 
                   style={{ width: '100%', padding: '14px', fontSize: '1rem', borderRadius: '12px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', boxShadow: '0 8px 24px rgba(42, 46, 28, 0.15)' }}
                 >
-                  <Sparkles size={18} />
+                  <ArrowRight size={18} />
                   <span>Unlock Full App Dashboard</span>
                 </button>
                 <div style={{ textAlign: 'center', marginTop: '10px', fontSize: '0.74rem', color: 'var(--text-muted)' }}>
