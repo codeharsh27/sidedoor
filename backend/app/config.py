@@ -41,6 +41,14 @@ class Settings(BaseSettings):
     # How many days until a source contribution to recency_score decays to zero
     ranker_recency_decay_days: int = 180
 
+    # Stage 4 — Role Matcher
+    role_match_min_score: float = 0.10
+    role_match_max_reasons: int = 5
+
+    # Stage 4 — Profile Matcher / Card Writer
+    cards_top_n: int = 3
+    profile_match_min_score: float = 0.0
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 

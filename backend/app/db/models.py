@@ -50,6 +50,9 @@ class User(Base):
     profile: Mapped["UserProfile"] = relationship(
         back_populates="user", uselist=False, lazy="selectin"
     )
+    cards: Mapped[list["Card"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan", passive_deletes=True
+    )
 
 
 class UserProfile(Base):
@@ -137,6 +140,12 @@ class Company(Base):
         back_populates="company", cascade="all, delete-orphan", passive_deletes=True
     )
     gap_clusters: Mapped[list["GapCluster"]] = relationship(
+        back_populates="company", cascade="all, delete-orphan", passive_deletes=True
+    )
+    fixability_flags: Mapped[list["FixabilityFlag"]] = relationship(
+        back_populates="company", cascade="all, delete-orphan", passive_deletes=True
+    )
+    cards: Mapped[list["Card"]] = relationship(
         back_populates="company", cascade="all, delete-orphan", passive_deletes=True
     )
 
@@ -268,3 +277,163 @@ class GapCluster(Base):
 
     # Relationships
     company: Mapped["Company"] = relationship(back_populates="gap_clusters")
+    fixability_flag: Mapped["FixabilityFlag"] = relationship(
+        back_populates="gap_cluster", uselist=False, cascade="all, delete-orphan", passive_deletes=True
+    )
+    role_matches: Mapped[list["RoleMatch"]] = relationship(
+        back_populates="gap_cluster", cascade="all, delete-orphan", passive_deletes=True
+    )
+    cards: Mapped[list["Card"]] = relationship(
+        back_populates="gap_cluster", cascade="all, delete-orphan", passive_deletes=True
+    )
+
+
+class FixabilityFlag(Base):
+    """
+    fixability_flags table — ARCHITECTURE.md §2.
+    """
+
+    __tablename__ = "fixability_flags"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    gap_cluster_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("gap_clusters.id", ondelete="CASCADE"),
+        unique=True,
+        nullable=False,
+    )
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    has_public_repo: Mapped[bool] = mapped_column(nullable=False, default=False)
+    has_public_api: Mapped[bool] = mapped_column(nullable=False, default=False)
+    has_ui_surface: Mapped[bool] = mapped_column(nullable=False, default=True)
+    is_buildable: Mapped[bool] = mapped_column(nullable=False, default=True)
+    computed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        server_default=text("now()"),
+    )
+
+    # Relationships
+    gap_cluster: Mapped["GapCluster"] = relationship(back_populates="fixability_flag")
+    company: Mapped["Company"] = relationship(back_populates="fixability_flags")
+    cards: Mapped[list["Card"]] = relationship(
+        back_populates="fixability_flag", cascade="all, delete-orphan", passive_deletes=True
+    )
+
+
+class RoleMatch(Base):
+    """
+    role_matches table — ARCHITECTURE.md §2.
+    """
+
+    __tablename__ = "role_matches"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    gap_cluster_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("gap_clusters.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    job_posting_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("job_postings.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    match_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    match_reason: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "gap_cluster_id", "job_posting_id", name="uq_role_matches_cluster_job"
+        ),
+    )
+
+    # Relationships
+    gap_cluster: Mapped["GapCluster"] = relationship(back_populates="role_matches")
+    job_posting: Mapped["JobPosting"] = relationship()
+    cards: Mapped[list["Card"]] = relationship(
+        back_populates="role_match", cascade="all, delete-orphan", passive_deletes=True
+    )
+
+
+class Card(Base):
+    """
+    cards table — ARCHITECTURE.md §2.
+    """
+
+    __tablename__ = "cards"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    gap_cluster_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("gap_clusters.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    profile_match_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    fixability_flag_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("fixability_flags.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    role_match_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("role_matches.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    shown_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    status: Mapped[str] = mapped_column(
+        Text, nullable=False, default="new", server_default=text("'new'")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        server_default=text("now()"),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        server_default=text("now()"),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "gap_cluster_id", name="uq_cards_user_cluster"),
+    )
+
+    # Relationships
+    user: Mapped["User"] = relationship(back_populates="cards")
+    gap_cluster: Mapped["GapCluster"] = relationship(back_populates="cards")
+    company: Mapped["Company"] = relationship(back_populates="cards")
+    fixability_flag: Mapped["FixabilityFlag"] = relationship(back_populates="cards")
+    role_match: Mapped["RoleMatch"] = relationship(back_populates="cards")

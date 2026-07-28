@@ -64,7 +64,7 @@ def upgrade() -> None:
             ["company_id"], ["companies.id"], ondelete="CASCADE"
         ),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("source_url"),
+        sa.UniqueConstraint("company_id", "source_url", name="uq_evidence_items_company_id_source_url"),
     )
 
     # 3. Create job_postings table

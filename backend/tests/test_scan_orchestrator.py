@@ -173,3 +173,116 @@ class TestScanOrchestrator:
         assert results["scan_status"] == "done"
         assert mock_company.scan_status == "done"
         assert mock_company.last_scanned_at is not None
+
+    @pytest.mark.asyncio
+    @patch("app.services.scan_orchestrator.HackerNewsCollector.collect")
+    @patch("app.services.scan_orchestrator.RedditCollector.collect")
+    @patch("app.services.scan_orchestrator.GitHubCollector.collect")
+    @patch("app.services.scan_orchestrator.XTwitterCollector.collect")
+    @patch("app.services.scan_orchestrator.JobPostingsCollector.collect")
+    async def test_scan_company_failure_marks_failed(
+        self, mock_jobs, mock_x, mock_github, mock_reddit, mock_hn, mock_db_session
+    ):
+        """If an unexpected exception occurs, scan should fail, roll back, and mark company as failed."""
+        mock_company = Company(
+            id="123-abc",
+            name="Stripe",
+            url="https://stripe.com",
+            last_scanned_at=None,
+            scan_status="pending",
+        )
+        mock_company_result = MagicMock()
+        mock_company_result.scalar_one_or_none.return_value = mock_company
+        
+        mock_refetch_result = MagicMock()
+        mock_refetch_result.scalar_one_or_none.return_value = mock_company
+
+        mock_ok_res = MagicMock()
+        mock_ok_res.rowcount = 1
+
+        mock_db_session.execute.side_effect = [
+            mock_company_result,  # first lookup
+            mock_ok_res,           # insert 1
+            mock_ok_res,           # insert 2
+            mock_ok_res,           # insert 3
+            RuntimeError("Unexpected database disconnect"), # final count lookup (crashes!)
+            mock_refetch_result,   # lookup in rollback block
+        ]
+
+        mock_hn.return_value = [
+            EvidenceItemCreate("hacker_news", "https://hn/1", "HN comment 1"),
+            EvidenceItemCreate("hacker_news", "https://hn/2", "HN comment 2"),
+            EvidenceItemCreate("hacker_news", "https://hn/3", "HN comment 3"),
+        ]
+        mock_reddit.return_value = []
+        mock_github.return_value = []
+        mock_jobs.return_value = []
+
+        with pytest.raises(RuntimeError, match="Unexpected database disconnect"):
+            await scan_company("123-abc", mock_db_session)
+
+        mock_db_session.rollback.assert_called_once()
+        assert mock_company.scan_status == "failed"
+
+    @pytest.mark.asyncio
+    @patch("app.services.scan_orchestrator.HackerNewsCollector.collect")
+    @patch("app.services.scan_orchestrator.RedditCollector.collect")
+    @patch("app.services.scan_orchestrator.GitHubCollector.collect")
+    @patch("app.services.scan_orchestrator.XTwitterCollector.collect")
+    @patch("app.services.scan_orchestrator.JobPostingsCollector.collect")
+    async def test_scan_savepoints_partial_failure(
+        self, mock_jobs, mock_x, mock_github, mock_reddit, mock_hn, mock_db_session
+    ):
+        """If one insert fails inside the savepoint, it should not prevent other items from being saved."""
+        mock_company = Company(
+            id="123-abc",
+            name="Stripe",
+            url="https://stripe.com",
+            last_scanned_at=None,
+            scan_status="pending",
+        )
+        mock_company_result = MagicMock()
+        mock_company_result.scalar_one_or_none.return_value = mock_company
+        
+        mock_items_result = MagicMock()
+        mock_items_result.scalars.return_value.all.return_value = [MagicMock(), MagicMock()]
+
+        mock_ok_res = MagicMock()
+        mock_ok_res.rowcount = 1
+        
+        mock_db_session.execute.side_effect = [
+            mock_company_result,
+            mock_ok_res,
+            RuntimeError("DB uniqueness constraint violation"),
+            mock_ok_res,
+            mock_items_result,
+        ]
+
+        mock_hn.return_value = [
+            EvidenceItemCreate("hacker_news", "https://hn/1", "HN comment 1"),
+            EvidenceItemCreate("hacker_news", "https://hn/2", "HN comment 2"),
+            EvidenceItemCreate("hacker_news", "https://hn/3", "HN comment 3"),
+        ]
+        mock_reddit.return_value = []
+        mock_github.return_value = []
+        mock_jobs.return_value = []
+
+        results = await scan_company("123-abc", mock_db_session)
+
+        assert results["status"] == "done"
+        assert results["newly_saved_count"] == 2
+        assert mock_company.scan_status == "done"
+
+    def test_evidence_item_composite_uniqueness(self):
+        """Verify that EvidenceItem has a composite unique constraint on (company_id, source_url)."""
+        from app.db.models import EvidenceItem
+        from sqlalchemy import UniqueConstraint
+        
+        constraints = [c for c in EvidenceItem.__table__.constraints if isinstance(c, UniqueConstraint)]
+        assert len(constraints) == 1
+        
+        constraint = constraints[0]
+        col_names = [col.name for col in constraint.columns]
+        assert "company_id" in col_names
+        assert "source_url" in col_names
+        assert len(col_names) == 2

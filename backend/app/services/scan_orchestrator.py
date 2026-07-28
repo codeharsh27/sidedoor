@@ -1,6 +1,7 @@
 """Orchestrates Stage 2 scan pipeline for target companies."""
 
 import logging
+import uuid
 from datetime import datetime, timezone
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,12 +16,15 @@ from app.services.collectors.x_twitter import XTwitterCollector
 from app.services.collectors.job_postings import JobPostingsCollector
 from app.services.clusterer import InsufficientEvidenceError, cluster_evidence
 from app.services.ranker import rank_clusters
+from app.services.fixability import compute_fixability
+from app.services.role_matcher import match_roles
+from app.services.profile_matcher import match_profile_and_write_cards
 from app.config import settings
 
 logger = logging.getLogger(__name__)
 
 
-async def scan_company(company_id: str, db: AsyncSession) -> dict:
+async def scan_company(company_id: str, db: AsyncSession, *, user_id: str | None = None) -> dict:
     """Run all active collectors for a company, respecting caching limits."""
     # 1. Fetch company
     stmt = select(Company).where(Company.id == company_id)
@@ -182,12 +186,45 @@ async def scan_company(company_id: str, db: AsyncSession) -> dict:
                 cluster_err,
             )
 
+        # ------------------------------------------------------------------
+        # Stage 4: Fixability + Role Match + Profile Match
+        # Run AFTER Stage 3 is complete and committed.
+        # Failures here are non-fatal: scan is still "done".
+        # ------------------------------------------------------------------
+        card_count = 0
+        if user_id:
+            try:
+                user_uuid = uuid.UUID(user_id)
+                fix_ids = await compute_fixability(company.id, db)
+                role_ids = await match_roles(company.id, db)
+                card_ids = await match_profile_and_write_cards(
+                    user_uuid, company.id, db
+                )
+                await db.commit()
+                card_count = len(card_ids)
+                logger.info(
+                    "Stage 4 complete for %s and user %s: %d fixability flags, %d role matches, %d cards written",
+                    company.name,
+                    user_id,
+                    len(fix_ids),
+                    len(role_ids),
+                    card_count,
+                )
+            except Exception as stage4_err:
+                logger.error(
+                    "Stage 4 (matching/cards) failed for %s and user %s: %s",
+                    company.name,
+                    user_id,
+                    stage4_err,
+                )
+
         return {
             "status": "done",
             "evidence_count": total_count,
             "newly_saved_count": saved_count,
             "cluster_count": len(cluster_ids),
             "ranked_count": ranked_count,
+            "card_count": card_count,
             "scan_status": company.scan_status,
             "last_scanned_at": company.last_scanned_at,
         }

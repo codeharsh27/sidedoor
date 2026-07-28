@@ -141,7 +141,7 @@ class TestCompanyEndpoints:
         assert data["evidence_count"] == 8
         assert data["newly_saved_count"] == 5
         assert data["scan_status"] == "done"
-        mock_scan.assert_called_once_with(company_id, mock_db_session)
+        mock_scan.assert_called_once_with(company_id, mock_db_session, user_id=None)
 
     def test_get_evidence_success(self, client, mock_db_session):
         """Should return list of evidence items for a company."""

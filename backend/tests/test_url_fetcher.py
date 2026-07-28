@@ -133,7 +133,11 @@ class TestFetchAndExtractUrl:
     async def test_successful_html_fetch(self):
         """Valid URL returning HTML should extract text content."""
         mock_response = MagicMock()
-        mock_response.text = """
+        mock_response.status_code = 200
+        mock_response.headers = {"content-type": "text/html; charset=utf-8"}
+        mock_response.raise_for_status = MagicMock()
+        
+        text_content = """
         <html><body>
             <main>
                 <h1>John Doe - Software Engineer</h1>
@@ -142,12 +146,16 @@ class TestFetchAndExtractUrl:
             </main>
         </body></html>
         """
-        mock_response.content = mock_response.text.encode()
-        mock_response.headers = {"content-type": "text/html; charset=utf-8"}
-        mock_response.raise_for_status = MagicMock()
+        mock_response.content = text_content.encode()
+        
+        async def mock_aiter_bytes():
+            yield mock_response.content
+        mock_response.aiter_bytes = mock_aiter_bytes
+        mock_response.aclose = AsyncMock()
 
         mock_client = AsyncMock()
-        mock_client.get = AsyncMock(return_value=mock_response)
+        mock_client.build_request = MagicMock()
+        mock_client.send = AsyncMock(return_value=mock_response)
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=None)
 
@@ -162,14 +170,21 @@ class TestFetchAndExtractUrl:
     async def test_plain_text_fetch(self):
         """URL returning plain text should use it directly."""
         mock_response = MagicMock()
-        plain_text = "John Doe, Software Engineer. Skills: Python, React. " * 5
-        mock_response.text = plain_text
-        mock_response.content = plain_text.encode()
+        mock_response.status_code = 200
         mock_response.headers = {"content-type": "text/plain"}
         mock_response.raise_for_status = MagicMock()
+        
+        plain_text = "John Doe, Software Engineer. Skills: Python, React. " * 5
+        mock_response.content = plain_text.encode()
+        
+        async def mock_aiter_bytes():
+            yield mock_response.content
+        mock_response.aiter_bytes = mock_aiter_bytes
+        mock_response.aclose = AsyncMock()
 
         mock_client = AsyncMock()
-        mock_client.get = AsyncMock(return_value=mock_response)
+        mock_client.build_request = MagicMock()
+        mock_client.send = AsyncMock(return_value=mock_response)
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=None)
 
@@ -183,14 +198,46 @@ class TestFetchAndExtractUrl:
     async def test_response_too_large_rejected(self):
         """Responses exceeding MAX_URL_RESPONSE_BYTES should be rejected."""
         mock_response = MagicMock()
-        large_content = b"x" * (MAX_URL_RESPONSE_BYTES + 1)
-        mock_response.text = "x" * (MAX_URL_RESPONSE_BYTES + 1)
-        mock_response.content = large_content
+        mock_response.status_code = 200
         mock_response.headers = {"content-type": "text/html"}
         mock_response.raise_for_status = MagicMock()
+        
+        large_content = b"x" * (MAX_URL_RESPONSE_BYTES + 1)
+        mock_response.content = large_content
+        
+        async def mock_aiter_bytes():
+            yield b"x" * (MAX_URL_RESPONSE_BYTES // 2)
+            yield b"x" * (MAX_URL_RESPONSE_BYTES // 2 + 5)
+            
+        mock_response.aiter_bytes = mock_aiter_bytes
+        mock_response.aclose = AsyncMock()
 
         mock_client = AsyncMock()
-        mock_client.get = AsyncMock(return_value=mock_response)
+        mock_client.build_request = MagicMock()
+        mock_client.send = AsyncMock(return_value=mock_response)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+
+        with patch("app.services.url_fetcher.validate_url", return_value="https://example.com"):
+            with patch("app.services.url_fetcher.httpx.AsyncClient", return_value=mock_client):
+                with pytest.raises(ContentTooLargeError):
+                    await fetch_and_extract_url("https://example.com/huge-page")
+
+    @pytest.mark.asyncio
+    async def test_response_content_length_header_too_large(self):
+        """If content-length header exceeds limit, reject immediately."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.headers = {
+            "content-type": "text/html",
+            "content-length": str(MAX_URL_RESPONSE_BYTES + 1)
+        }
+        mock_response.raise_for_status = MagicMock()
+        mock_response.aclose = AsyncMock()
+
+        mock_client = AsyncMock()
+        mock_client.build_request = MagicMock()
+        mock_client.send = AsyncMock(return_value=mock_response)
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=None)
 
@@ -203,7 +250,8 @@ class TestFetchAndExtractUrl:
     async def test_timeout_raises_clear_error(self):
         """Timeouts should raise FetchTimeoutError."""
         mock_client = AsyncMock()
-        mock_client.get = AsyncMock(side_effect=httpx.TimeoutException("Connection timed out"))
+        mock_client.build_request = MagicMock()
+        mock_client.send = AsyncMock(side_effect=httpx.TimeoutException("Connection timed out"))
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=None)
 
@@ -216,13 +264,20 @@ class TestFetchAndExtractUrl:
     async def test_empty_response_rejected(self):
         """URLs returning empty content should raise URLFetchError."""
         mock_response = MagicMock()
-        mock_response.text = ""
+        mock_response.status_code = 200
         mock_response.content = b""
         mock_response.headers = {"content-type": "text/html"}
         mock_response.raise_for_status = MagicMock()
+        
+        async def mock_aiter_bytes():
+            if False:
+                yield b""
+        mock_response.aiter_bytes = mock_aiter_bytes
+        mock_response.aclose = AsyncMock()
 
         mock_client = AsyncMock()
-        mock_client.get = AsyncMock(return_value=mock_response)
+        mock_client.build_request = MagicMock()
+        mock_client.send = AsyncMock(return_value=mock_response)
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=None)
 
@@ -236,6 +291,7 @@ class TestFetchAndExtractUrl:
         """HTTP error status codes should raise URLFetchError."""
         mock_response = MagicMock()
         mock_response.status_code = 404
+        mock_response.aclose = AsyncMock()
         mock_response.raise_for_status = MagicMock(
             side_effect=httpx.HTTPStatusError(
                 "Not Found",
@@ -245,7 +301,8 @@ class TestFetchAndExtractUrl:
         )
 
         mock_client = AsyncMock()
-        mock_client.get = AsyncMock(return_value=mock_response)
+        mock_client.build_request = MagicMock()
+        mock_client.send = AsyncMock(return_value=mock_response)
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=None)
 
@@ -253,3 +310,82 @@ class TestFetchAndExtractUrl:
             with patch("app.services.url_fetcher.httpx.AsyncClient", return_value=mock_client):
                 with pytest.raises(URLFetchError, match="404"):
                     await fetch_and_extract_url("https://example.com/missing")
+
+    @pytest.mark.asyncio
+    async def test_redirect_to_private_ip_is_blocked(self):
+        """Public URL redirecting to private/internal IP (e.g. 127.0.0.1) should raise SSRFBlockedError."""
+        mock_redirect_response = MagicMock()
+        mock_redirect_response.status_code = 302
+        mock_redirect_response.headers = {"location": "http://127.0.0.1/admin"}
+        mock_redirect_response.aclose = AsyncMock()
+
+        mock_client = AsyncMock()
+        mock_client.build_request = MagicMock()
+        mock_client.send = AsyncMock(return_value=mock_redirect_response)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+
+        with patch("app.services.url_fetcher.validate_url", side_effect=[
+            "https://public-site.com",
+            SSRFBlockedError("URL blocked: resolves to private IP"),
+        ]):
+            with patch("app.services.url_fetcher.httpx.AsyncClient", return_value=mock_client):
+                with pytest.raises(SSRFBlockedError):
+                    await fetch_and_extract_url("https://public-site.com")
+
+    @pytest.mark.asyncio
+    async def test_relative_redirect_resolved_correctly(self):
+        """Relative redirect should be resolved against the current URL and followed successfully."""
+        mock_redirect_response = MagicMock()
+        mock_redirect_response.status_code = 302
+        mock_redirect_response.headers = {"location": "/profile-page"}
+        mock_redirect_response.aclose = AsyncMock()
+
+        mock_ok_response = MagicMock()
+        mock_ok_response.status_code = 200
+        mock_ok_response.headers = {"content-type": "text/plain"}
+        mock_ok_response.raise_for_status = MagicMock()
+        mock_ok_response.content = b"John Doe: Python developer profile info. More experience details here to pass validation."
+        
+        async def mock_aiter_bytes():
+            yield mock_ok_response.content
+        mock_ok_response.aiter_bytes = mock_aiter_bytes
+        mock_ok_response.aclose = AsyncMock()
+
+        mock_client = AsyncMock()
+        mock_client.build_request = MagicMock()
+        mock_client.send = AsyncMock(side_effect=[mock_redirect_response, mock_ok_response])
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+
+        validated_urls = []
+        def mock_validate(u):
+            validated_urls.append(u)
+            return u
+
+        with patch("app.services.url_fetcher.validate_url", side_effect=mock_validate):
+            with patch("app.services.url_fetcher.httpx.AsyncClient", return_value=mock_client):
+                result = await fetch_and_extract_url("https://example.com/start")
+
+        assert "John Doe" in result
+        assert "Python" in result
+        assert validated_urls == ["https://example.com/start", "https://example.com/profile-page"]
+
+    @pytest.mark.asyncio
+    async def test_too_many_redirects_fails(self):
+        """If redirect count exceeds MAX_REDIRECTS, fail with URLFetchError."""
+        mock_redirect_response = MagicMock()
+        mock_redirect_response.status_code = 302
+        mock_redirect_response.headers = {"location": "https://example.com/next"}
+        mock_redirect_response.aclose = AsyncMock()
+
+        mock_client = AsyncMock()
+        mock_client.build_request = MagicMock()
+        mock_client.send = AsyncMock(return_value=mock_redirect_response)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+
+        with patch("app.services.url_fetcher.validate_url", lambda u: u):
+            with patch("app.services.url_fetcher.httpx.AsyncClient", return_value=mock_client):
+                with pytest.raises(URLFetchError, match="Too many redirects"):
+                    await fetch_and_extract_url("https://example.com/infinite")

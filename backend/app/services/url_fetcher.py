@@ -143,42 +143,89 @@ async def fetch_and_extract_url(url: str) -> str:
         pool=URL_FETCH_TIMEOUT_TOTAL,
     )
 
+    from urllib.parse import urljoin
+    current_url = validated_url
+    redirects_count = 0
+    content_bytes = bytearray()
+    last_response_status_code = None
+    last_response_headers = None
+    last_response_request = None
+
     try:
         async with httpx.AsyncClient(
             timeout=timeout,
-            max_redirects=MAX_REDIRECTS,
-            follow_redirects=True,
+            follow_redirects=False,
             headers={"User-Agent": _USER_AGENT},
         ) as client:
-            response = await client.get(validated_url)
-            response.raise_for_status()
+            while True:
+                req = client.build_request("GET", current_url)
+                response = await client.send(req, stream=True)
+                try:
+                    last_response_status_code = response.status_code
+                    last_response_headers = response.headers
+                    last_response_request = response.request
+
+                    # Check for redirect
+                    if response.status_code in (301, 302, 303, 307, 308):
+                        location = response.headers.get("location")
+                        if not location:
+                            raise URLFetchError("Redirect response missing Location header.")
+                        
+                        next_url = urljoin(current_url, location)
+                        current_url = validate_url(next_url)
+                        
+                        redirects_count += 1
+                        if redirects_count > MAX_REDIRECTS:
+                            raise URLFetchError(f"Too many redirects (limit: {MAX_REDIRECTS})")
+                        
+                        continue
+                    
+                    response.raise_for_status()
+                    
+                    content_length_header = response.headers.get("content-length")
+                    if content_length_header:
+                        try:
+                            cl = int(content_length_header)
+                            if cl > MAX_URL_RESPONSE_BYTES:
+                                raise ContentTooLargeError(
+                                    f"Response too large ({cl} bytes). Maximum: {MAX_URL_RESPONSE_BYTES} bytes."
+                                )
+                        except ValueError:
+                            pass
+                    
+                    async for chunk in response.aiter_bytes():
+                        content_bytes.extend(chunk)
+                        if len(content_bytes) > MAX_URL_RESPONSE_BYTES:
+                            raise ContentTooLargeError(
+                                f"Response too large ({len(content_bytes)} bytes). Maximum: {MAX_URL_RESPONSE_BYTES} bytes."
+                            )
+                    
+                    break
+                finally:
+                    await response.aclose()
 
     except httpx.TimeoutException as e:
         raise FetchTimeoutError(
             f"Timed out fetching URL (limit: {URL_FETCH_TIMEOUT_TOTAL}s): {e}"
         ) from e
-    except httpx.TooManyRedirects as e:
-        raise URLFetchError(
-            f"Too many redirects (limit: {MAX_REDIRECTS}): {e}"
-        ) from e
     except (InvalidURLError, SSRFBlockedError):
-        # Re-raise our own security errors unchanged
         raise
     except httpx.HTTPStatusError as e:
         raise URLFetchError(
             f"URL returned HTTP {e.response.status_code}: {e}"
         ) from e
+    except URLFetchError:
+        raise
     except Exception as e:
         raise URLFetchError(f"Failed to fetch URL: {e}") from e
 
-    # Step 3: Check response size
-    content_length = len(response.content)
-    if content_length > MAX_URL_RESPONSE_BYTES:
-        max_mb = MAX_URL_RESPONSE_BYTES / (1024 * 1024)
-        raise ContentTooLargeError(
-            f"Response too large ({content_length / (1024 * 1024):.1f}MB). "
-            f"Maximum: {max_mb:.0f}MB."
-        )
+    # Build dummy completed response to pass to downstream extraction
+    response = httpx.Response(
+        status_code=last_response_status_code,
+        headers=last_response_headers,
+        content=bytes(content_bytes),
+        request=last_response_request,
+    )
 
     # Step 4: Extract text based on content type
     content_type = response.headers.get("content-type", "")
