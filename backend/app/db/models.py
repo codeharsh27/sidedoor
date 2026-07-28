@@ -101,3 +101,103 @@ class UserProfile(Base):
 
     # Relationships
     user: Mapped["User"] = relationship(back_populates="profile")
+
+
+class Company(Base):
+    """
+    companies table — ARCHITECTURE.md §2.
+    """
+
+    __tablename__ = "companies"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    url: Mapped[str] = mapped_column(Text, nullable=False)
+    github_repo_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    careers_page_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ats_slug: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_scanned_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    scan_status: Mapped[str] = mapped_column(
+        Text, nullable=False, default="pending"
+    )  # "pending" | "scanning" | "done" | "insufficient_signal"
+
+    # Relationships
+    evidence_items: Mapped[list["EvidenceItem"]] = relationship(
+        back_populates="company", cascade="all, delete-orphan", passive_deletes=True
+    )
+    job_postings: Mapped[list["JobPosting"]] = relationship(
+        back_populates="company", cascade="all, delete-orphan", passive_deletes=True
+    )
+
+
+class EvidenceItem(Base):
+    """
+    evidence_items table — ARCHITECTURE.md §2.
+    """
+
+    __tablename__ = "evidence_items"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    source_type: Mapped[str] = mapped_column(Text, nullable=False)  # "hacker_news" | "reddit" | "github_issue" | "x_post" | "job_posting"
+    source_url: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
+    raw_text: Mapped[str] = mapped_column(Text, nullable=False)
+    author_handle: Mapped[str | None] = mapped_column(Text, nullable=True)
+    posted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    fetched_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        server_default=text("now()"),
+    )
+
+    # Relationships
+    company: Mapped["Company"] = relationship(back_populates="evidence_items")
+
+
+class JobPosting(Base):
+    """
+    job_postings table — ARCHITECTURE.md §2.
+    """
+
+    __tablename__ = "job_postings"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    raw_text: Mapped[str] = mapped_column(Text, nullable=False)
+    posted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    is_open: Mapped[bool] = mapped_column(
+        nullable=False, default=True, server_default=text("true")
+    )
+
+    # Relationships
+    company: Mapped["Company"] = relationship(back_populates="job_postings")

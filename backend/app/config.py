@@ -20,6 +20,12 @@ class Settings(BaseSettings):
     max_file_size_mb: int = 10  # Max uploaded file size in MB
     url_fetch_timeout: int = 30  # Max seconds for portfolio URL fetching
 
+    # Stage 2 Collectors
+    github_token: str = ""
+    twitter_bearer_token: str = ""
+    reddit_client_id: str = ""
+    reddit_client_secret: str = ""
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 
