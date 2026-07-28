@@ -10,7 +10,8 @@ import uuid
 from datetime import datetime, timezone
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import DateTime, ForeignKey, Text, text
+from sqlalchemy import DateTime, ForeignKey, Text, text, UniqueConstraint
+from sqlalchemy import Float, Integer
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -135,6 +136,9 @@ class Company(Base):
     job_postings: Mapped[list["JobPosting"]] = relationship(
         back_populates="company", cascade="all, delete-orphan", passive_deletes=True
     )
+    gap_clusters: Mapped[list["GapCluster"]] = relationship(
+        back_populates="company", cascade="all, delete-orphan", passive_deletes=True
+    )
 
 
 class EvidenceItem(Base):
@@ -156,7 +160,7 @@ class EvidenceItem(Base):
         nullable=False,
     )
     source_type: Mapped[str] = mapped_column(Text, nullable=False)  # "hacker_news" | "reddit" | "github_issue" | "x_post" | "job_posting"
-    source_url: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
+    source_url: Mapped[str] = mapped_column(Text, nullable=False)
     raw_text: Mapped[str] = mapped_column(Text, nullable=False)
     author_handle: Mapped[str | None] = mapped_column(Text, nullable=True)
     posted_at: Mapped[datetime | None] = mapped_column(
@@ -166,6 +170,10 @@ class EvidenceItem(Base):
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
         server_default=text("now()"),
+    )
+
+    __table_args__ = (
+        UniqueConstraint("company_id", "source_url", name="uq_evidence_items_company_id_source_url"),
     )
 
     # Relationships
@@ -201,3 +209,62 @@ class JobPosting(Base):
 
     # Relationships
     company: Mapped["Company"] = relationship(back_populates="job_postings")
+
+
+class GapCluster(Base):
+    """
+    gap_clusters table — ARCHITECTURE.md §2.
+
+    One row per semantically-distinct complaint/request cluster found across
+    a company's evidence items. Populated by Stage 3 (Clusterer + Ranker).
+
+    Fields:
+      - label: short human-readable label extracted by TF-IDF, e.g. "slow auth"
+      - embedding_vector: centroid of all member evidence_item vectors (384-dim)
+      - evidence_item_ids: UUIDs of all EvidenceItems in the cluster
+      - evidence_count: len(evidence_item_ids); denormalised for fast ranking queries
+      - recency_score: mean per-item recency decay score [0.0, 1.0]
+      - rank_score: final formula-based score used for card ordering
+    """
+
+    __tablename__ = "gap_clusters"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    label: Mapped[str] = mapped_column(Text, nullable=False)
+    embedding_vector = mapped_column(Vector(384), nullable=False)
+    evidence_item_ids: Mapped[list] = mapped_column(
+        ARRAY(UUID(as_uuid=True)), nullable=False, default=list
+    )
+    evidence_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1
+    )
+    recency_score: Mapped[float] = mapped_column(
+        Float, nullable=False, default=0.0
+    )
+    rank_score: Mapped[float] = mapped_column(
+        Float, nullable=False, default=0.0
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        server_default=text("now()"),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        server_default=text("now()"),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    # Relationships
+    company: Mapped["Company"] = relationship(back_populates="gap_clusters")
