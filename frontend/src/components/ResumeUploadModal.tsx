@@ -7,9 +7,10 @@ interface ResumeUploadModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: (profile: UserProfile) => void;
+  userId?: string;
 }
 
-export const ResumeUploadModal: React.FC<ResumeUploadModalProps> = ({ isOpen, onClose, onSuccess }) => {
+export const ResumeUploadModal: React.FC<ResumeUploadModalProps> = ({ isOpen, onClose, onSuccess, userId }) => {
   const [dragActive, setDragActive] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [portfolioLink, setPortfolioLink] = useState('');
@@ -54,7 +55,7 @@ export const ResumeUploadModal: React.FC<ResumeUploadModalProps> = ({ isOpen, on
     }, 1000);
 
     try {
-      const profile = await apiClient.uploadResume(file || undefined, portfolioLink);
+      const profile = await apiClient.uploadResume(file || undefined, portfolioLink, userId);
       clearInterval(progressInterval);
       setProgressStep(2);
       

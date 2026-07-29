@@ -30,7 +30,7 @@ export interface Company {
 export interface EvidenceItem {
   id: string;
   company_id: string;
-  source_type: 'reddit' | 'github_issue' | 'review' | 'job_posting';
+  source_type: 'reddit' | 'hacker_news' | 'github_issue' | 'x_post' | 'review' | 'job_posting';
   source_url: string;
   raw_text: string;
   author_handle: string | null;

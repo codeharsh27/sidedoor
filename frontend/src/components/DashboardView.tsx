@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import type { OpportunityCardView, FixabilityFlags, UserProfile } from '../types/schema';
-import { MOCK_CARDS } from '../mock/mockData';
 import { CompanyLogo } from './CompanyLogo';
+import { apiClient } from '../api/client';
 import { 
   Terminal, Search, ShieldAlert,
   ArrowUpRight, Building2, PanelLeftClose, PanelLeftOpen,
@@ -50,55 +50,30 @@ interface Contact {
 }
 
 const getMockContacts = (companyName: string): Contact[] => {
-  const c = companyName.toLowerCase();
-  if (c.includes('posthog')) {
-    return [
-      { name: "James Hawkins", role: "Co-Founder & CEO", linkedin: "https://www.linkedin.com/in/james-hawkins-ph", email: "james.h@posthog.com" },
-      { name: "Tim Glaser", role: "Co-Founder & CTO", linkedin: "https://www.linkedin.com/in/tim-glaser-ph", email: "tim.g@posthog.com" },
-      { name: "Alex White", role: "Engineering Manager (DevTools)", linkedin: "https://www.linkedin.com/in/alex-white-devtools", email: "alex.w@posthog.com" },
-      { name: "Luke Harries", role: "Product Engineer", linkedin: "https://www.linkedin.com/in/luke-harries", email: "luke.h@posthog.com" },
-      { name: "Annika Schmid", role: "Talent Acquisition Specialist", linkedin: "https://www.linkedin.com/in/annika-schmid", email: "annika.s@posthog.com" }
-    ];
-  } else if (c.includes('stripe')) {
-    return [
-      { name: "John Collison", role: "Co-Founder & President", linkedin: "https://www.linkedin.com/in/johncollison", email: "john.c@stripe.com" },
-      { name: "Sarah Franklin", role: "Engineering Manager (Billing)", linkedin: "https://www.linkedin.com/in/sarah-franklin-stripe", email: "sarah.f@stripe.com" },
-      { name: "David Stark", role: "Lead DevTools Engineer", linkedin: "https://www.linkedin.com/in/davidstark", email: "david.s@stripe.com" },
-      { name: "Michelle Chen", role: "Director of Product", linkedin: "https://www.linkedin.com/in/mchen-stripe", email: "mchen@stripe.com" },
-      { name: "Robert Patterson", role: "Technical Recruiter", linkedin: "https://www.linkedin.com/in/rpatterson-talent", email: "robert.p@stripe.com" }
-    ];
-  } else if (c.includes('linear')) {
-    return [
-      { name: "Karri Saarinen", role: "Co-Founder & CEO", linkedin: "https://www.linkedin.com/in/karrisaarinen", email: "karri@linear.app" },
-      { name: "Tuomas Artman", role: "Co-Founder & CTO", linkedin: "https://www.linkedin.com/in/artman", email: "tuomas@linear.app" },
-      { name: "Jari Kolehmainen", role: "Principal Engineer", linkedin: "https://www.linkedin.com/in/jarikole", email: "jari@linear.app" },
-      { name: "Tomi Ruotimo", role: "Engineering Lead", linkedin: "https://www.linkedin.com/in/truotimo", email: "tomi@linear.app" },
-      { name: "Elena Verna", role: "Head of Growth", linkedin: "https://www.linkedin.com/in/elenaverna", email: "elena@linear.app" }
-    ];
-  } else if (c.includes('vercel')) {
-    return [
-      { name: "Guillermo Rauch", role: "Founder & CEO", linkedin: "https://www.linkedin.com/in/rauchg", email: "rauchg@vercel.com" },
-      { name: "Lee Robinson", role: "VP of Developer Experience", linkedin: "https://www.linkedin.com/in/leerob", email: "leerob@vercel.com" },
-      { name: "Jared Palmer", role: "Engineering Manager (Turborepo)", linkedin: "https://www.linkedin.com/in/jaredpalmer", email: "jared@vercel.com" },
-      { name: "Shu Ding", role: "Lead Frontend Engineer", linkedin: "https://www.linkedin.com/in/shuding", email: "shu@vercel.com" },
-      { name: "Kari Anderson", role: "Lead Recruiting Partner", linkedin: "https://www.linkedin.com/in/kanderson-talent", email: "kari.a@vercel.com" }
-    ];
-  } else {
-    const formatted = companyName.toLowerCase().replace(/\s+/g, '');
-    return [
-      { name: `Marc Andreessen`, role: "Board Member / Investor", linkedin: "https://www.linkedin.com", email: `marc@pm.com` },
-      { name: `Alex Rivers`, role: "Engineering Manager", linkedin: "https://www.linkedin.com", email: `alex.r@${formatted}.com` },
-      { name: `Taylor Vance`, role: "Lead Frontend Architect", linkedin: "https://www.linkedin.com", email: `taylor.v@${formatted}.com` },
-      { name: `Jordan Smith`, role: "Senior Developer Advocate", linkedin: "https://www.linkedin.com", email: `jordan.s@${formatted}.com` },
-      { name: `Morgan Gray`, role: "Talent Acquisition Manager", linkedin: "https://www.linkedin.com", email: `morgan.g@${formatted}.com` }
-    ];
-  }
+  const roles = [
+    'Engineering Manager',
+    'Developer Experience',
+    'Product Engineer',
+    'Technical Recruiter',
+    'Founder CTO',
+  ];
+
+  return roles.map(role => {
+    const query = encodeURIComponent(`${role} ${companyName}`);
+    return {
+      name: `Search ${role}`,
+      role,
+      linkedin: `https://www.linkedin.com/search/results/people/?keywords=${query}`,
+      email: 'Generated search URL only',
+    };
+  });
 };
 
 const getOpportunityDetails = (item: OpportunityCardView) => {
   const isPostHog = item.company.name.toLowerCase().includes('posthog');
   const isStripe = item.company.name.toLowerCase().includes('stripe');
   const isLinear = item.company.name.toLowerCase().includes('linear');
+  const isVercel = item.company.name.toLowerCase().includes('vercel');
 
   if (isPostHog) {
     return {
@@ -121,12 +96,22 @@ const getOpportunityDetails = (item: OpportunityCardView) => {
       solve: "Create a browser extension or custom integration card that pulls current cycle analytics from Linear API and exports formatted spreadsheets.",
       perfect: "Matches your TypeScript and REST APIs experience. You already built visual reporting dashboards, making this a straightforward win."
     };
-  } else {
+  } else if (isVercel) {
     return {
       opportunity: "Design a visual timeline component that parses deployment events and builds a timeline view for build steps.",
       gap: "Vercel's build log screen is a raw text scroll, missing a visual timeline breakdown of which steps took the most time.",
       solve: "Develop a React log parser that groups lines by build phase (cloning, building, caching) and visualizes them as a clean Gantt-style chart.",
       perfect: "Perfect for your React, TypeScript, and Data Visualization skills. This is exactly the kind of frontend developer tool you excel at."
+    };
+  } else {
+    // Dynamic fallback for newly scanned companies
+    const title = item.gap_cluster.label;
+    const evText = item.evidence_items[0]?.raw_text || 'No description provided.';
+    return {
+      opportunity: `Build a solution addressing: "${title}".`,
+      gap: `Identified customer issue: "${evText}"`,
+      solve: `Initialize a project targeting this opportunity. Leverage the company's repository and public APIs.`,
+      perfect: item.why_matches_you || "This opportunity matches your profile credentials and technical domains."
     };
   }
 };
@@ -136,9 +121,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ userProfile, onBac
   const [rightPaneOpen, setRightPaneOpen] = useState(true);
   
   // Dynamic states
-  const [cardsList, setCardsList] = useState<OpportunityCardView[]>(MOCK_CARDS);
-  const [searchHistory, setSearchHistory] = useState(['PostHog', 'Stripe', 'Linear', 'Vercel']);
-  const [activeCompany, setActiveCompany] = useState<string | null>(null);
+  const [cardsList, setCardsList] = useState<OpportunityCardView[]>([]);
+  const [searchHistory, setSearchHistory] = useState<string[]>([]);
+  const [activeCompany, setActiveCompany] = useState<string | null>('new');
 
   // Middle Pane State
   const [linkInput, setLinkInput] = useState('');
@@ -160,6 +145,45 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ userProfile, onBac
   const [viewMode, setViewMode] = useState<'dashboard' | 'outreach' | 'account'>('dashboard');
   const [pitchText, setPitchText] = useState('');
   const [isEditingPitch, setIsEditingPitch] = useState(false);
+  const [contacts, setContacts] = useState<any[]>([]);
+
+  // Load real cards on mount or user change
+  useEffect(() => {
+    if (userProfile?.user_id) {
+      apiClient.getOpportunityCards(userProfile.user_id)
+        .then(cards => {
+          if (cards && cards.length > 0) {
+            setCardsList(cards);
+            setActiveCompany(cards[0].company.name);
+          }
+        })
+        .catch(err => console.error("Error loading cards:", err));
+    } else {
+      setActiveCompany('PostHog');
+    }
+  }, [userProfile?.user_id]);
+
+  // Sync search history based on loaded cards
+  useEffect(() => {
+    if (cardsList && cardsList.length > 0) {
+      const uniqueCompanies = Array.from(new Set(cardsList.map(c => c.company.name)));
+      setSearchHistory(uniqueCompanies);
+    }
+  }, [cardsList]);
+
+  // Load contacts for active opportunity card
+  useEffect(() => {
+    if (activePromptModal?.company?.id) {
+      apiClient.getContacts(activePromptModal.company.id)
+        .then(setContacts)
+        .catch(err => {
+          console.error("Error fetching contacts:", err);
+          setContacts(getMockContacts(activePromptModal.company.name));
+        });
+    } else {
+      setContacts([]);
+    }
+  }, [activePromptModal]);
 
   useEffect(() => {
     setLiveAppLink('');
@@ -170,11 +194,30 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ userProfile, onBac
     setIsEditingPitch(false);
   }, [activePromptModal]);
 
+  // Load and compile outreach template draft from backend
   useEffect(() => {
-    if (activePromptModal) {
+    if (activePromptModal && userProfile?.user_id) {
+      apiClient.getOutreachDraft(activePromptModal.company.id, activePromptModal.card.id, userProfile.user_id)
+        .then(res => {
+          if (res && res.draft_text) {
+            let text = res.draft_text;
+            if (liveAppLink) {
+              text = text.replace(/\[TODO:\s*Insert\s*live\s*app\s*URL\s*here\]/gi, liveAppLink);
+            }
+            if (loomLink) {
+              text = text.replace(/\[TODO:\s*Insert\s*Loom\s*video\s*URL\s*here\]/gi, loomLink);
+            }
+            setPitchText(text);
+          }
+        })
+        .catch(err => {
+          console.error("Error loading outreach draft:", err);
+          setPitchText(generateOutreachText(activePromptModal, liveAppLink, loomLink));
+        });
+    } else if (activePromptModal) {
       setPitchText(generateOutreachText(activePromptModal, liveAppLink, loomLink));
     }
-  }, [liveAppLink, loomLink, activePromptModal]);
+  }, [liveAppLink, loomLink, activePromptModal, userProfile?.user_id]);
   
 
   useEffect(() => {
@@ -276,7 +319,7 @@ Quote: "${evText}"
     window.open(url, '_blank');
   };
 
-  const handleExtractCompany = () => {
+  const handleExtractCompany = async () => {
     if (!linkInput.trim()) return;
 
     let companyName = 'Supabase';
@@ -297,27 +340,51 @@ Quote: "${evText}"
     setIsScanning(true);
     setScanStage('fetching');
 
-    setTimeout(() => {
+    const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+    const animateSequence = async () => {
+      await sleep(1000);
       setScanStage('analyzing');
-      setTimeout(() => {
-        setScanStage('aligning');
-        setTimeout(() => {
-          setScanStage('clustering');
-          setTimeout(() => {
-            setIsScanning(false);
-            setScanStage('idle');
-            setLinkInput('');
-            
-            if (!searchHistory.includes(companyName)) {
-              setSearchHistory(prev => [companyName, ...prev]);
-              const newCard = createMockOpportunityForCompany(companyName);
-              setCardsList(prev => [newCard, ...prev]);
-            }
-            setActiveCompany(companyName);
-          }, 1200);
-        }, 1200);
-      }, 1200);
-    }, 1200);
+      await sleep(1000);
+      setScanStage('aligning');
+      await sleep(1000);
+      setScanStage('clustering');
+      await sleep(1000);
+    };
+
+    const scanPromise = userProfile?.user_id
+      ? apiClient.scanCompany(userProfile.user_id, linkInput.trim())
+          .catch(err => {
+            console.error("Backend scan failed:", err);
+            return null;
+          })
+      : Promise.resolve(null);
+
+    const [_, scanResult] = await Promise.all([animateSequence(), scanPromise]);
+
+    setIsScanning(false);
+    setScanStage('idle');
+    setLinkInput('');
+
+    if (scanResult && scanResult.company) {
+      const actualName = scanResult.company.name;
+      if (scanResult.cards && scanResult.cards.length > 0) {
+        setCardsList(prev => {
+          const filtered = prev.filter(c => c.company.id !== scanResult.company.id);
+          return [...scanResult.cards, ...filtered];
+        });
+      }
+      if (!searchHistory.includes(actualName)) {
+        setSearchHistory(prev => [actualName, ...prev]);
+      }
+      setActiveCompany(actualName);
+    } else {
+      if (!searchHistory.includes(companyName)) {
+        setSearchHistory(prev => [companyName, ...prev]);
+        const newCard = createMockOpportunityForCompany(companyName);
+        setCardsList(prev => [newCard, ...prev]);
+      }
+      setActiveCompany(companyName);
+    }
   };
 
   return (
@@ -517,7 +584,7 @@ Quote: "${evText}"
                         <span style={{ fontSize: '0.9rem', color: 'var(--ink)', fontWeight: 600, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{uploadedFile.name}</span>
                       </div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                        {userProfile?.parsed_skills.map(skill => (
+                        {userProfile?.parsed_skills?.map(skill => (
                           <span key={skill} className="badge" style={{ backgroundColor: 'var(--paper)', border: '1px solid var(--border-light)', color: 'var(--text-muted)', fontSize: '0.75rem' }}>{skill}</span>
                         ))}
                       </div>
@@ -701,7 +768,7 @@ Quote: "${evText}"
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  {getMockContacts(activePromptModal.company.name).map((contact, i) => (
+                  {(contacts && contacts.length > 0 ? contacts : getMockContacts(activePromptModal.company.name)).map((contact, i) => (
                     <div key={i} className="paper-card" style={{ padding: '16px', backgroundColor: 'var(--paper)', borderRadius: '10px', border: '1px solid var(--border-light)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <div>
                         <div style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--ink)' }}>{contact.name}</div>
