@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import type { OpportunityCardView, FixabilityFlags, UserProfile } from '../types/schema';
+import type { OpportunityCardView, FixabilityFlags, UserProfile, BountyItem } from '../types/schema';
 import { CompanyLogo } from './CompanyLogo';
 import { apiClient } from '../api/client';
 import { 
@@ -145,7 +145,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ userProfile, onBac
   const [loomLink, setLoomLink] = useState('');
   const [copiedOutreach, setCopiedOutreach] = useState(false);
   const [viewMode, setViewMode] = useState<'dashboard' | 'outreach' | 'account'>('dashboard');
-  const [mainTab, setMainTab] = useState<'feed' | 'analyzer' | 'tracker'>('feed');
+  const [mainTab, setMainTab] = useState<'feed' | 'analyzer' | 'bounties' | 'tracker'>('feed');
+  const [bountiesList, setBountiesList] = useState<BountyItem[]>([]);
+  const [bountyFilterCategory, setBountyFilterCategory] = useState<'all' | 'bounty' | 'hackathon' | 'trial' | 'inr'>('all');
   const [pitchText, setPitchText] = useState('');
   const [isEditingPitch, setIsEditingPitch] = useState(false);
   const [contacts, setContacts] = useState<any[]>([]);
@@ -192,6 +194,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ userProfile, onBac
     apiClient.getCompanyFeed(userProfile?.user_id)
       .then(setDiscoveryFeed)
       .catch(err => console.error("Error loading discovery feed:", err));
+
+    // Load Paid Bounties & Solo Hackathons
+    apiClient.getBounties().then(setBountiesList).catch(() => {});
 
     // Load Phase 5 Kanban & Reminders
     if (userProfile?.user_id) {
@@ -535,7 +540,7 @@ Arjun is building a 4-hour MVP to showcase his skills to ${item.company.name}.
                 fontWeight: 600, fontSize: '0.9rem', cursor: 'pointer', textAlign: 'left'
               }}
             >
-              🌟 <span>VC Discovery Feed</span>
+              <span>VC Discovery Feed</span>
             </button>
             <button
               onClick={() => { setMainTab('analyzer'); setViewMode('dashboard'); }}
@@ -547,7 +552,19 @@ Arjun is building a 4-hour MVP to showcase his skills to ${item.company.name}.
                 fontWeight: 600, fontSize: '0.9rem', cursor: 'pointer', textAlign: 'left'
               }}
             >
-              ⚡ <span>Company Analyzer</span>
+              <span>Company Analyzer</span>
+            </button>
+            <button
+              onClick={() => { setMainTab('bounties'); setViewMode('dashboard'); }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', borderRadius: '8px',
+                backgroundColor: mainTab === 'bounties' && viewMode === 'dashboard' ? 'var(--cream)' : 'transparent',
+                border: `1px solid ${mainTab === 'bounties' && viewMode === 'dashboard' ? 'var(--accent-gold)' : 'transparent'}`,
+                color: mainTab === 'bounties' && viewMode === 'dashboard' ? 'var(--ink)' : 'var(--text-muted)',
+                fontWeight: 600, fontSize: '0.9rem', cursor: 'pointer', textAlign: 'left'
+              }}
+            >
+              <span>Earn ($150-$2,000)</span>
             </button>
             <button
               onClick={() => { setMainTab('tracker'); setViewMode('dashboard'); }}
@@ -559,7 +576,7 @@ Arjun is building a 4-hour MVP to showcase his skills to ${item.company.name}.
                 fontWeight: 600, fontSize: '0.9rem', cursor: 'pointer', textAlign: 'left'
               }}
             >
-              📊 <span>Kanban Tracker</span>
+              <span>Kanban Tracker</span>
               {followupReminders.length > 0 && (
                 <span style={{ backgroundColor: '#ef4444', color: '#fff', borderRadius: '10px', fontSize: '0.7rem', padding: '2px 6px', fontWeight: 700 }}>
                   {followupReminders.length}
@@ -1130,6 +1147,129 @@ Arjun is building a 4-hour MVP to showcase his skills to ${item.company.name}.
                         </div>
                       );
                     })}
+                </div>
+              </div>
+            ) : mainTab === 'bounties' ? (
+              /* --- EARN WHILE BUILDING (PAID BOUNTIES & SOLO HACKATHONS) --- */
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                <div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--accent-gold)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Short-Term Runway Cash</div>
+                  <h2 className="font-serif" style={{ fontSize: '1.6rem', color: 'var(--ink)', margin: '4px 0 8px 0' }}>Paid GitHub Bounties & Solo Developer Hackathons</h2>
+                  <p style={{ fontSize: '0.95rem', color: 'var(--text-muted)', margin: 0 }}>
+                    Short-term cash opportunities ($150 - $2,000) tailored for product engineers. Earn cash in 3-10 days while building proof-of-work portfolio items.
+                  </p>
+                </div>
+
+                {/* Category Filter Chips */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', borderBottom: '1px solid var(--border-light)', paddingBottom: '12px' }}>
+                  <button 
+                    onClick={() => setBountyFilterCategory('all')}
+                    className="font-mono"
+                    style={{ padding: '6px 14px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600, border: '1px solid', cursor: 'pointer', backgroundColor: bountyFilterCategory === 'all' ? 'var(--ink)' : 'var(--paper)', color: bountyFilterCategory === 'all' ? 'var(--paper)' : 'var(--text-muted)', borderColor: 'var(--border)' }}
+                  >
+                    All Opportunities ({bountiesList.length})
+                  </button>
+                  <button 
+                    onClick={() => setBountyFilterCategory('bounty')}
+                    className="font-mono"
+                    style={{ padding: '6px 14px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600, border: '1px solid', cursor: 'pointer', backgroundColor: bountyFilterCategory === 'bounty' ? 'var(--accent-gold)' : 'var(--paper)', color: bountyFilterCategory === 'bounty' ? 'white' : 'var(--text-muted)', borderColor: 'var(--border)' }}
+                  >
+                    GitHub Feature Bounties ($150 - $1,500)
+                  </button>
+                  <button 
+                    onClick={() => setBountyFilterCategory('hackathon')}
+                    className="font-mono"
+                    style={{ padding: '6px 14px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600, border: '1px solid', cursor: 'pointer', backgroundColor: bountyFilterCategory === 'hackathon' ? '#f97316' : 'var(--paper)', color: bountyFilterCategory === 'hackathon' ? 'white' : 'var(--text-muted)', borderColor: 'var(--border)' }}
+                  >
+                    Solo Hackathons ($500 - $5,000)
+                  </button>
+                  <button 
+                    onClick={() => setBountyFilterCategory('trial')}
+                    className="font-mono"
+                    style={{ padding: '6px 14px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600, border: '1px solid', cursor: 'pointer', backgroundColor: bountyFilterCategory === 'trial' ? '#0284c7' : 'var(--paper)', color: bountyFilterCategory === 'trial' ? 'white' : 'var(--text-muted)', borderColor: 'var(--border)' }}
+                  >
+                    Paid Founder Trial Sprints
+                  </button>
+                  <button 
+                    onClick={() => setBountyFilterCategory('inr')}
+                    className="font-mono"
+                    style={{ padding: '6px 14px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600, border: '1px solid', cursor: 'pointer', backgroundColor: bountyFilterCategory === 'inr' ? '#16a34a' : 'var(--paper)', color: bountyFilterCategory === 'inr' ? 'white' : 'var(--text-muted)', borderColor: 'var(--border)' }}
+                  >
+                    India / INR Grants (₹35,000+)
+                  </button>
+                </div>
+
+                {/* Bounty Cards Grid */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                  {bountiesList
+                    .filter(b => {
+                      if (bountyFilterCategory === 'bounty') return b.type === 'bounty';
+                      if (bountyFilterCategory === 'hackathon') return b.type === 'hackathon';
+                      if (bountyFilterCategory === 'trial') return b.type === 'trial';
+                      if (bountyFilterCategory === 'inr') return b.reward_amount.includes('₹');
+                      return true;
+                    })
+                    .map(b => (
+                      <div 
+                        key={b.id} 
+                        className="paper-card" 
+                        style={{ padding: '20px', borderRadius: '12px', backgroundColor: 'var(--paper)', border: '1px solid var(--border-light)', display: 'flex', flexDirection: 'column', gap: '12px' }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <CompanyLogo name={b.company_name} size={32} />
+                            <div>
+                              <div style={{ fontWeight: 700, fontSize: '1.05rem', color: 'var(--ink)' }}>{b.title}</div>
+                              <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>{b.company_name} • Est. {b.est_hours} Hours</div>
+                            </div>
+                          </div>
+
+                          <span className="font-mono" style={{ fontSize: '0.75rem', backgroundColor: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0', padding: '3px 10px', borderRadius: '6px', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                            Pay: {b.reward_amount}
+                          </span>
+                        </div>
+
+                        <p style={{ margin: 0, fontSize: '0.88rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>
+                          {b.description}
+                        </p>
+
+                        <div style={{ backgroundColor: 'var(--cream)', padding: '10px 12px', borderRadius: '6px', border: '1px solid var(--border-light)', fontSize: '0.8rem', color: 'var(--ink)', lineHeight: 1.4 }}>
+                          <strong>Senior Build Plan:</strong> {b.senior_build_plan}
+                        </div>
+
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                          {b.tech_stack.map(t => (
+                            <span key={t} style={{ fontSize: '0.7rem', backgroundColor: 'var(--surface)', border: '1px solid var(--border-light)', color: 'var(--text-muted)', padding: '2px 6px', borderRadius: '4px' }}>
+                              {t}
+                            </span>
+                          ))}
+                        </div>
+
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px', borderTop: '1px solid var(--paper-edge)', paddingTop: '12px' }}>
+                          <a 
+                            href={b.source_url} 
+                            target="_blank" 
+                            rel="noreferrer" 
+                            className="font-mono"
+                            style={{ fontSize: '0.78rem', color: 'var(--accent-gold)', display: 'inline-flex', alignItems: 'center', gap: '4px', textDecoration: 'none', fontWeight: 600 }}
+                          >
+                            <span>View Source ({b.platform_source}) ↗</span>
+                          </a>
+
+                          <button 
+                            onClick={() => {
+                              navigator.clipboard.writeText(`Senior Prompt for ${b.title} at ${b.company_name}:\n${b.senior_build_plan}`);
+                              alert(`Copied Senior AI Build Prompt for ${b.title} to clipboard!`);
+                            }}
+                            className="btn-primary"
+                            style={{ padding: '6px 12px', fontSize: '0.8rem' }}
+                          >
+                            <Terminal size={14} />
+                            <span>Build with AI</span>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
                 </div>
               </div>
             ) : mainTab === 'tracker' ? (

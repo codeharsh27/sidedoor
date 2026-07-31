@@ -128,6 +128,20 @@ export interface OnboardingData {
   company_values: string[];
   skills?: string[];
   experienceLevel?: string;
-  targetCompanies?: string[];
+}
+
+export interface BountyItem {
+  id: string;
+  title: string;
+  company_name: string;
+  company_url: string;
+  reward_amount: string;
+  type: 'bounty' | 'hackathon' | 'trial';
+  tech_stack: string[];
+  est_hours: number;
+  platform_source: string;
+  source_url: string;
+  description: string;
+  senior_build_plan: string;
 }
 

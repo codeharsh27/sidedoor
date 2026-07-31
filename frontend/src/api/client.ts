@@ -1,4 +1,4 @@
-import type { GapCluster, OpportunityCardView, UserProfile } from '../types/schema';
+import type { GapCluster, OpportunityCardView, UserProfile, BountyItem } from '../types/schema';
 import { MOCK_CARDS, mockUserProfile } from '../mock/mockData';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api/v1';
@@ -355,6 +355,22 @@ export const apiClient = {
       user_id: userId,
       updated_at: new Date().toISOString(),
     };
+  },
+
+  /**
+   * Fetches curated product engineering bounties & solo hackathons
+   */
+  async getBounties(bountyType?: string, techStack?: string): Promise<BountyItem[]> {
+    let url = `${BASE_URL}/bounties`;
+    const params = new URLSearchParams();
+    if (bountyType && bountyType !== 'all') params.append('bounty_type', bountyType);
+    if (techStack) params.append('tech_stack', techStack);
+    if (params.toString()) url += `?${params.toString()}`;
+
+    const res = await fetch(url);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.bounties ?? [];
   },
 
   /**
