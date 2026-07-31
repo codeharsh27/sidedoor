@@ -115,3 +115,19 @@ export interface OpportunityCardView {
   };
   why_matches_you: string; // Templated: "You listed {top_skill} — this gap involves {domain}."
 }
+
+export interface OnboardingData {
+  role: string;
+  years_experience: string;
+  focus: string;
+  tech_stack: string[];
+  domains: string[];
+  github_url: string;
+  project_summary: string;
+  target_investors: string[];
+  company_values: string[];
+  skills?: string[];
+  experienceLevel?: string;
+  targetCompanies?: string[];
+}
+

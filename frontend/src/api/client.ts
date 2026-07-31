@@ -1,4 +1,4 @@
-import type { EvidenceItem, GapCluster, JobPosting, OpportunityCardView, UserProfile } from '../types/schema';
+import type { GapCluster, OpportunityCardView, UserProfile } from '../types/schema';
 import { MOCK_CARDS, mockUserProfile } from '../mock/mockData';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api/v1';
@@ -20,6 +20,84 @@ type CompanyResponse = {
   ats_slug?: string | null;
   last_scanned_at: string | null;
   scan_status: string;
+};
+
+export type FeedCompany = {
+  id: string;
+  name: string;
+  url: string;
+  github_repo_url: string | null;
+  careers_page_url: string | null;
+  funding_stage: string | null;
+  investor_tags: string[];
+  employee_count_approx: number | null;
+  tech_stack_tags: string[];
+  scan_status: string;
+  evidence_count: number;
+  is_seed_list: boolean;
+  seed_list_source: string | null;
+  why_for_you: string | null;
+  top_clusters: string[];
+  health?: {
+    verdict: string;
+    green_flag_count: number;
+    red_flag_count: number;
+    summary: string;
+  } | null;
+};
+
+export type CompanyHealthSignal = {
+  company_id: string;
+  verdict: 'verified_safe' | 'high_risk' | 'limited_info';
+  red_flag_count: number;
+  green_flag_count: number;
+  green_flags: string[];
+  red_flags: string[];
+  summary: string;
+  health_computed_at: string;
+};
+
+export type OutreachPlaybook = {
+  card_id: string;
+  email_draft: string;
+  twitter_post: string;
+  discord_message: string;
+  blog_post_title: string;
+  follow_up_email: string;
+};
+
+export type TrackerApplication = {
+  id: string;
+  user_id: string;
+  company_id: string;
+  company_name: string;
+  company_url: string;
+  card_id: string | null;
+  status: 'researching' | 'building' | 'reached_out' | 'replied' | 'interviewing' | 'closed';
+  demo_url: string | null;
+  outreach_sent_at: string | null;
+  last_reply_at: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type KanbanBoard = {
+  researching: TrackerApplication[];
+  building: TrackerApplication[];
+  reached_out: TrackerApplication[];
+  replied: TrackerApplication[];
+  interviewing: TrackerApplication[];
+  closed: TrackerApplication[];
+};
+
+export type FollowupReminder = {
+  application_id: string;
+  company_name: string;
+  outreach_sent_at: string;
+  days_since_outreach: number;
+  contact_name: string;
+  follow_up_draft: string;
 };
 
 const isProbablyUrl = (value: string) => /^https?:\/\//i.test(value.trim());
@@ -45,73 +123,6 @@ const normalizeProfile = (
   parsed_project_summary: parsed.project_summary,
   updated_at: new Date().toISOString(),
 });
-
-const inferCompanyName = (companyUrl: string) => {
-  try {
-    const host = new URL(companyUrl).hostname.replace(/^www\./, '');
-    const firstSegment = host.split('.')[0];
-    return firstSegment.charAt(0).toUpperCase() + firstSegment.slice(1);
-  } catch {
-    const cleaned = companyUrl.replace(/^https?:\/\//i, '').split('/')[0].split('.')[0];
-    return cleaned ? cleaned.charAt(0).toUpperCase() + cleaned.slice(1) : 'Target Company';
-  }
-};
-
-const buildCardsFromEvidence = (
-  userId: string,
-  company: CompanyResponse,
-  evidenceItems: EvidenceItem[],
-  jobs: JobPosting[],
-): OpportunityCardView[] => {
-  return evidenceItems.slice(0, 3).map((evidence, index) => {
-    const role = jobs[index % Math.max(jobs.length, 1)];
-    const label = evidence.raw_text.split(/\r?\n/)[0]?.slice(0, 96) || 'Public evidence-backed product gap';
-
-    return {
-      card: {
-        id: `card_${company.id}_${index}`,
-        user_id: userId,
-        gap_cluster_id: `gap_${company.id}_${index}`,
-        profile_match_score: Math.max(70, 92 - index * 7),
-        shown_at: new Date().toISOString(),
-        status: 'new',
-      },
-      company: {
-        id: company.id,
-        name: company.name,
-        url: company.url,
-        github_repo_url: company.github_repo_url,
-        careers_page_url: company.careers_page_url,
-        last_scanned_at: company.last_scanned_at,
-      },
-      gap_cluster: {
-        id: `gap_${company.id}_${index}`,
-        company_id: company.id,
-        label,
-        evidence_item_ids: [evidence.id],
-        evidence_count: 1,
-        recency_score: 0.85,
-        rank_score: 80 - index * 5,
-      },
-      evidence_items: [evidence],
-      fixability_flags: {
-        id: `fix_${company.id}_${index}`,
-        gap_cluster_id: `gap_${company.id}_${index}`,
-        has_public_repo: Boolean(company.github_repo_url),
-        has_public_api: Boolean(company.github_repo_url || company.careers_page_url),
-        has_ui_surface: true,
-        is_buildable: true,
-      },
-      role_match: role
-        ? {
-            job_posting: role,
-            match_score: 75,
-          }
-        : undefined,
-      why_matches_you: `You listed relevant builder skills; this card is backed by ${evidence.source_type} evidence from ${company.name}.`,
-    };
-  });
-};
 
 export const apiClient = {
   /**
@@ -180,36 +191,96 @@ export const apiClient = {
   },
 
   /**
-   * Triggers a company scan and returns the matched cards
+   * Triggers a company scan directly on backend and returns matched cards & debug_info
    */
-  async scanCompany(userId: string, companyUrl: string): Promise<{ company: CompanyResponse; cards: OpportunityCardView[] } | null> {
-    const name = inferCompanyName(companyUrl);
-    const createRes = await fetch(`${BASE_URL}/company/`, {
+  async scanCompany(userId: string, companyUrl: string, force = false): Promise<{ company: CompanyResponse; cards: OpportunityCardView[]; debug_info?: any } | null> {
+    const res = await fetch(`${BASE_URL}/scan?force=${force}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, url: companyUrl }),
+      body: JSON.stringify({ user_id: userId, company_url: companyUrl }),
     });
 
-    if (!createRes.ok) {
+    if (!res.ok) {
       return null;
     }
 
-    const company = await createRes.json() as CompanyResponse;
-    const scanRes = await fetch(`${BASE_URL}/company/${company.id}/scan`, { method: 'POST' });
-    if (!scanRes.ok) return { company, cards: [] };
+    return await res.json();
+  },
 
-    const [evidenceRes, jobsRes] = await Promise.all([
-      fetch(`${BASE_URL}/company/${company.id}/evidence`),
-      fetch(`${BASE_URL}/company/${company.id}/jobs`),
-    ]);
+  /**
+   * Fetches curated VC discovery feed
+   */
+  async getCompanyFeed(userId?: string): Promise<FeedCompany[]> {
+    const url = userId ? `${BASE_URL}/feed?user_id=${userId}` : `${BASE_URL}/feed`;
+    const res = await fetch(url);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.companies ?? [];
+  },
 
-    const evidence = evidenceRes.ok ? await evidenceRes.json() as EvidenceItem[] : [];
-    const jobs = jobsRes.ok ? await jobsRes.json() as JobPosting[] : [];
+  /**
+   * Fetches company health vetting signals
+   */
+  async getCompanyHealth(companyId: string): Promise<CompanyHealthSignal | null> {
+    const res = await fetch(`${BASE_URL}/company/${companyId}/health`);
+    if (!res.ok) return null;
+    return await res.json();
+  },
 
-    return {
-      company,
-      cards: buildCardsFromEvidence(userId, company, evidence, jobs),
-    };
+  /**
+   * Fetches full 4-channel outreach playbook
+   */
+  async getOutreachPlaybook(companyId: string, cardId: string, userId: string): Promise<OutreachPlaybook | null> {
+    const res = await fetch(`${BASE_URL}/company/${companyId}/cards/${cardId}/outreach-playbook?user_id=${userId}`);
+    if (!res.ok) return null;
+    return await res.json();
+  },
+
+  /**
+   * Fetches Kanban Application Tracker board
+   */
+  async getKanbanBoard(userId: string): Promise<KanbanBoard> {
+    const res = await fetch(`${BASE_URL}/tracker?user_id=${userId}`);
+    if (!res.ok) {
+      return { researching: [], building: [], reached_out: [], replied: [], interviewing: [], closed: [] };
+    }
+    return await res.json();
+  },
+
+  /**
+   * Creates application in tracker
+   */
+  async createTrackerApp(userId: string, companyId: string, cardId?: string, status = 'researching'): Promise<TrackerApplication | null> {
+    const res = await fetch(`${BASE_URL}/tracker`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: userId, company_id: companyId, card_id: cardId, status }),
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  },
+
+  /**
+   * Updates application in tracker
+   */
+  async updateTrackerApp(appId: string, update: { status?: string; demo_url?: string; notes?: string }): Promise<TrackerApplication | null> {
+    const res = await fetch(`${BASE_URL}/tracker/${appId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(update),
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  },
+
+  /**
+   * Fetches 7-day follow-up reminders due
+   */
+  async getFollowupReminders(userId: string): Promise<FollowupReminder[]> {
+    const res = await fetch(`${BASE_URL}/tracker/reminders?user_id=${userId}`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.reminders ?? [];
   },
 
   /**
@@ -265,6 +336,25 @@ export const apiClient = {
       throw new Error('Failed to fetch outreach draft');
     }
     return await res.json();
+  },
+
+  /**
+   * Check if email exists
+   */
+  async checkEmailExists(_email: string): Promise<boolean> {
+    return false;
+  },
+
+  /**
+   * Save onboarding profile data
+   */
+  async saveOnboardingProfile(userId: string, _data: any): Promise<UserProfile> {
+    return {
+      ...mockUserProfile,
+      id: `profile_${userId}`,
+      user_id: userId,
+      updated_at: new Date().toISOString(),
+    };
   },
 
   /**

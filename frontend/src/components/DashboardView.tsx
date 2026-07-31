@@ -5,7 +5,7 @@ import { apiClient } from '../api/client';
 import { 
   Terminal, Search, ShieldAlert,
   ArrowUpRight, Building2, PanelLeftClose, PanelLeftOpen,
-  PanelRightClose, PanelRightOpen, ArrowLeft, Upload, Link as LinkIcon, Send, AlertCircle, Plus, FileText, X, Settings
+  PanelRightClose, PanelRightOpen, ArrowLeft, Upload, Link as LinkIcon, Send, AlertCircle, Plus, FileText, X, Settings, Check
 } from 'lucide-react';
 
 
@@ -104,14 +104,15 @@ const getOpportunityDetails = (item: OpportunityCardView) => {
       perfect: "Perfect for your React, TypeScript, and Data Visualization skills. This is exactly the kind of frontend developer tool you excel at."
     };
   } else {
-    // Dynamic fallback for newly scanned companies
+    // Clean, executive 10-second summary fallback for scanned companies
     const title = item.gap_cluster.label;
-    const evText = item.evidence_items[0]?.raw_text || 'No description provided.';
+    const rawEv = item.evidence_items[0]?.raw_text || 'Developer friction reported in public discussion.';
+    const cleanGap = rawEv.length > 180 ? rawEv.slice(0, 180) + "..." : rawEv;
     return {
-      opportunity: `Build a solution addressing: "${title}".`,
-      gap: `Identified customer issue: "${evText}"`,
-      solve: `Initialize a project targeting this opportunity. Leverage the company's repository and public APIs.`,
-      perfect: item.why_matches_you || "This opportunity matches your profile credentials and technical domains."
+      opportunity: `Build a Next.js / React micro-app or developer extension for ${item.company.name} solving: "${title}".`,
+      gap: cleanGap,
+      solve: `Build a 4–6 hour open-source web sandbox or workflow extension for ${item.company.name}. Deploy live on Vercel/Railway and record a 2-minute Loom walkthrough.`,
+      perfect: item.why_matches_you || "Matches your profile credentials and technical domains."
     };
   }
 };
@@ -124,6 +125,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ userProfile, onBac
   const [cardsList, setCardsList] = useState<OpportunityCardView[]>([]);
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const [activeCompany, setActiveCompany] = useState<string | null>('new');
+  const [feedFilterCategory, setFeedFilterCategory] = useState<'all' | 'india' | 'yc' | 'early_stage' | 'high_pay'>('all');
 
   // Middle Pane State
   const [linkInput, setLinkInput] = useState('');
@@ -143,9 +145,33 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ userProfile, onBac
   const [loomLink, setLoomLink] = useState('');
   const [copiedOutreach, setCopiedOutreach] = useState(false);
   const [viewMode, setViewMode] = useState<'dashboard' | 'outreach' | 'account'>('dashboard');
+  const [mainTab, setMainTab] = useState<'feed' | 'analyzer' | 'tracker'>('feed');
   const [pitchText, setPitchText] = useState('');
   const [isEditingPitch, setIsEditingPitch] = useState(false);
   const [contacts, setContacts] = useState<any[]>([]);
+
+  // Phase 1-5 State additions
+  const [discoveryFeed, setDiscoveryFeed] = useState<any[]>([]);
+  const [playbookData, setPlaybookData] = useState<any | null>(null);
+  const [activePlaybookTab, setActivePlaybookTab] = useState<'email' | 'twitter' | 'discord' | 'blog' | 'followup'>('email');
+  const [kanbanBoard, setKanbanBoard] = useState<any | null>(null);
+  const [followupReminders, setFollowupReminders] = useState<any[]>([]);
+  const [companyHealthMap, setCompanyHealthMap] = useState<Record<string, any>>({});
+  const [isRefreshingFeed, setIsRefreshingFeed] = useState(false);
+
+  const handleRefreshFeed = async () => {
+    setIsRefreshingFeed(true);
+    try {
+      const fresh = await apiClient.getCompanyFeed(userProfile?.user_id);
+      if (fresh && fresh.length > 0) {
+        setDiscoveryFeed(fresh);
+      }
+    } catch (e) {
+      console.error("Feed refresh failed:", e);
+    } finally {
+      setTimeout(() => setIsRefreshingFeed(false), 800);
+    }
+  };
 
   // Load real cards on mount or user change
   useEffect(() => {
@@ -160,6 +186,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ userProfile, onBac
         .catch(err => console.error("Error loading cards:", err));
     } else {
       setActiveCompany('PostHog');
+    }
+
+    // Load Phase 2 VC Discovery Feed
+    apiClient.getCompanyFeed(userProfile?.user_id)
+      .then(setDiscoveryFeed)
+      .catch(err => console.error("Error loading discovery feed:", err));
+
+    // Load Phase 5 Kanban & Reminders
+    if (userProfile?.user_id) {
+      apiClient.getKanbanBoard(userProfile.user_id).then(setKanbanBoard).catch(() => {});
+      apiClient.getFollowupReminders(userProfile.user_id).then(setFollowupReminders).catch(() => {});
     }
   }, [userProfile?.user_id]);
 
@@ -194,30 +231,31 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ userProfile, onBac
     setIsEditingPitch(false);
   }, [activePromptModal]);
 
-  // Load and compile outreach template draft from backend
+  // Load 4-channel outreach playbook from backend
   useEffect(() => {
     if (activePromptModal && userProfile?.user_id) {
-      apiClient.getOutreachDraft(activePromptModal.company.id, activePromptModal.card.id, userProfile.user_id)
-        .then(res => {
-          if (res && res.draft_text) {
-            let text = res.draft_text;
-            if (liveAppLink) {
-              text = text.replace(/\[TODO:\s*Insert\s*live\s*app\s*URL\s*here\]/gi, liveAppLink);
-            }
-            if (loomLink) {
-              text = text.replace(/\[TODO:\s*Insert\s*Loom\s*video\s*URL\s*here\]/gi, loomLink);
-            }
-            setPitchText(text);
+      apiClient.getOutreachPlaybook(activePromptModal.company.id, activePromptModal.card.id, userProfile.user_id)
+        .then(pb => {
+          if (pb) {
+            setPlaybookData(pb);
+            setPitchText(pb.email_draft);
           }
         })
         .catch(err => {
-          console.error("Error loading outreach draft:", err);
+          console.error("Error loading outreach playbook:", err);
           setPitchText(generateOutreachText(activePromptModal, liveAppLink, loomLink));
         });
-    } else if (activePromptModal) {
-      setPitchText(generateOutreachText(activePromptModal, liveAppLink, loomLink));
+
+      // Load company health signal
+      apiClient.getCompanyHealth(activePromptModal.company.id)
+        .then(h => {
+          if (h) {
+            setCompanyHealthMap(prev => ({ ...prev, [activePromptModal.company.id]: h }));
+          }
+        })
+        .catch(() => {});
     }
-  }, [liveAppLink, loomLink, activePromptModal, userProfile?.user_id]);
+  }, [activePromptModal, userProfile?.user_id]);
   
 
   useEffect(() => {
@@ -268,6 +306,19 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ userProfile, onBac
 
   const filteredCards = cardsList.filter(item => item.company.name === activeCompany);
 
+  const handleEnrollOpportunity = async (item: OpportunityCardView) => {
+    setActivePromptModal(item);
+    if (userProfile?.user_id) {
+      try {
+        await apiClient.createTrackerApp(userProfile.user_id, item.company.id, item.card.id, 'building');
+        const updatedBoard = await apiClient.getKanbanBoard(userProfile.user_id);
+        setKanbanBoard(updatedBoard);
+      } catch (e) {
+        console.warn("Could not auto-enroll card in kanban tracker:", e);
+      }
+    }
+  };
+
   const getEstimateType = (flags: FixabilityFlags): string => {
     if (flags.has_public_repo && flags.has_public_api && flags.has_ui_surface) return 'weekend_hack';
     if (flags.has_public_repo || flags.has_public_api) return 'one_week_project';
@@ -282,56 +333,75 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ userProfile, onBac
       case 'high_effort_system': return <span className="badge badge-orange" style={{ fontSize: '0.7rem', padding: '2px 8px' }}>System Refactor</span>;
       default: return null;
     }
-  };
+  };  const [copiedPromptToast, setCopiedPromptToast] = useState(false);
 
   const generatePromptText = (item: OpportunityCardView): string => {
     const title = item.gap_cluster.label;
-    const evText = item.evidence_items[0]?.raw_text || 'No evidence cited.';
+    const evText = item.evidence_items[0]?.raw_text || 'Developer friction reported in community threads.';
     const evUrl = item.evidence_items[0]?.source_url || 'https://github.com';
-    const role = item.role_match?.job_posting.title || 'Full Stack Engineer';
+    const role = item.role_match?.job_posting.title || 'Full Stack / Product Engineer';
 
-    return `# Scaffold Specification: ${title} at ${item.company.name}
-# Target Role: ${role}
-# Non-Negotiable Principle: Scaffold & hand off ONLY. Do NOT complete the full application build.
+    return `You are a Senior Product & Software Engineer acting as a mentor for a junior/mid-level product engineer (Arjun).
+Arjun is building a 4-hour MVP to showcase his skills to ${item.company.name}.
 
-## 1. Architectural Gap & Context
-${item.why_matches_you}
+## 🎯 Target Project Specification
+- **Target Company**: ${item.company.name}
+- **Role Target**: ${role}
+- **Identified Gap / Problem**: "${title}"
+- **Verified Evidence Receipt**: ${evUrl}
+  - Quote: "${evText.slice(0, 300)}"
 
-## 2. Verified Engineering Telemetry Receipt
-Source URL: ${evUrl}
-Quote: "${evText}"
+## 🛠️ Senior Engineer's Step-by-Step Build Plan (4-6 Hours)
+1. **Architecture & Stack**:
+   - Frontend: Next.js 14 (App Router), Tailwind CSS, Lucide React icons.
+   - Backend API Proxy: Node.js / FastAPI endpoint connecting to ${item.company.name} public APIs.
+   - Deployment: Free Vercel / Railway tier.
 
-## 3. Scaffold Instructions for Assistant (Claude / Cursor / Copilot)
-1. Initialize a clean TypeScript + React (or Node/Python) project structure with proper linters and type definitions.
-2. Build the core data model and interfaces required to solve: "${title}".
-3. Implement mock service adapters or API connection scaffolding for ${item.company.name}.
-4. Provide a step-by-step TODO checklist in a README.md so the developer can complete the remaining business logic and UI polish themselves.`;
+2. **Step-by-Step Implementation TODO Checklist**:
+   - [ ] **Hour 1**: Initialize Next.js repository, configure Tailwind, build clean single-page dashboard layout.
+   - [ ] **Hour 2-3**: Implement core feature route addressing "${title}". Use mock JSON fallback data if live API credentials are missing.
+   - [ ] **Hour 4**: Add a 1-click JSON export or interactive playground UI.
+   - [ ] **Hour 5**: Deploy live to Vercel and record a 2-minute Loom walkthrough demo.
+
+3. **Code Scaffolding Request**:
+   - Please generate the complete folder structure (app/page.tsx, app/api/route.ts, components/Dashboard.tsx).
+   - Provide initial TypeScript interfaces, API schemas, and clean Tailwind styling.
+   - Add '# TODO: Implement business logic' comments where Arjun should finish the code himself.`;
   };
-
-
 
   const handleAgentHandoff = (agent: 'chatgpt' | 'claude') => {
     if (!activePromptModal) return;
     const prompt = generatePromptText(activePromptModal);
+    
+    // Copy full prompt directly to clipboard for instant pasting
+    try {
+      navigator.clipboard.writeText(prompt);
+      setCopiedPromptToast(true);
+      setTimeout(() => setCopiedPromptToast(false), 3000);
+    } catch (e) {
+      console.warn("Clipboard access limited:", e);
+    }
+
     const url = agent === 'chatgpt' 
-      ? `https://chatgpt.com/?q=${encodeURIComponent(prompt)}` 
-      : `https://claude.ai/new?q=${encodeURIComponent(prompt)}`;
+      ? `https://chatgpt.com/?q=${encodeURIComponent(prompt.slice(0, 1200))}` 
+      : `https://claude.ai/new?q=${encodeURIComponent(prompt.slice(0, 1200))}`;
     window.open(url, '_blank');
   };
 
-  const handleExtractCompany = async () => {
-    if (!linkInput.trim()) return;
+  const handleExtractCompany = async (overrideUrl?: string) => {
+    const urlToScan = (overrideUrl || linkInput).trim();
+    if (!urlToScan) return;
 
     let companyName = 'Supabase';
     try {
-      const url = new URL(linkInput);
+      const url = new URL(urlToScan);
       const hostParts = url.hostname.split('.');
       const candidate = hostParts.length > 2 ? hostParts[1] : hostParts[0];
       if (candidate && candidate.toLowerCase() !== 'www') {
         companyName = candidate.charAt(0).toUpperCase() + candidate.slice(1);
       }
     } catch (e) {
-      const cleaned = linkInput.replace(/https?:\/\//, '').split('/')[0].split('.')[0];
+      const cleaned = urlToScan.replace(/https?:\/\//, '').split('/')[0].split('.')[0];
       if (cleaned) {
         companyName = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
       }
@@ -352,7 +422,7 @@ Quote: "${evText}"
     };
 
     const scanPromise = userProfile?.user_id
-      ? apiClient.scanCompany(userProfile.user_id, linkInput.trim())
+      ? apiClient.scanCompany(userProfile.user_id, urlToScan, true)
           .catch(err => {
             console.error("Backend scan failed:", err);
             return null;
@@ -431,7 +501,7 @@ Quote: "${evText}"
 
         <div style={{ padding: '16px', flex: 1, overflowY: 'auto', minWidth: '260px' }}>
           <button 
-            onClick={() => setActiveCompany('new')}
+            onClick={() => { setActiveCompany('new'); setMainTab('analyzer'); }}
             style={{ 
               width: '100%',
               backgroundColor: activeCompany === 'new' ? 'var(--cream)' : 'transparent',
@@ -453,6 +523,50 @@ Quote: "${evText}"
             <Plus size={16} color="var(--ink)" />
             <span>New Search</span>
           </button>
+          {/* Main Workspace Navigation Tabs */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '16px' }}>
+            <button
+              onClick={() => { setMainTab('feed'); setViewMode('dashboard'); }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', borderRadius: '8px',
+                backgroundColor: mainTab === 'feed' && viewMode === 'dashboard' ? 'var(--cream)' : 'transparent',
+                border: `1px solid ${mainTab === 'feed' && viewMode === 'dashboard' ? 'var(--accent-gold)' : 'transparent'}`,
+                color: mainTab === 'feed' && viewMode === 'dashboard' ? 'var(--ink)' : 'var(--text-muted)',
+                fontWeight: 600, fontSize: '0.9rem', cursor: 'pointer', textAlign: 'left'
+              }}
+            >
+              🌟 <span>VC Discovery Feed</span>
+            </button>
+            <button
+              onClick={() => { setMainTab('analyzer'); setViewMode('dashboard'); }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', borderRadius: '8px',
+                backgroundColor: mainTab === 'analyzer' && viewMode === 'dashboard' ? 'var(--cream)' : 'transparent',
+                border: `1px solid ${mainTab === 'analyzer' && viewMode === 'dashboard' ? 'var(--accent-gold)' : 'transparent'}`,
+                color: mainTab === 'analyzer' && viewMode === 'dashboard' ? 'var(--ink)' : 'var(--text-muted)',
+                fontWeight: 600, fontSize: '0.9rem', cursor: 'pointer', textAlign: 'left'
+              }}
+            >
+              ⚡ <span>Company Analyzer</span>
+            </button>
+            <button
+              onClick={() => { setMainTab('tracker'); setViewMode('dashboard'); }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', borderRadius: '8px',
+                backgroundColor: mainTab === 'tracker' && viewMode === 'dashboard' ? 'var(--cream)' : 'transparent',
+                border: `1px solid ${mainTab === 'tracker' && viewMode === 'dashboard' ? 'var(--accent-gold)' : 'transparent'}`,
+                color: mainTab === 'tracker' && viewMode === 'dashboard' ? 'var(--ink)' : 'var(--text-muted)',
+                fontWeight: 600, fontSize: '0.9rem', cursor: 'pointer', textAlign: 'left'
+              }}
+            >
+              📊 <span>Kanban Tracker</span>
+              {followupReminders.length > 0 && (
+                <span style={{ backgroundColor: '#ef4444', color: '#fff', borderRadius: '10px', fontSize: '0.7rem', padding: '2px 6px', fontWeight: 700 }}>
+                  {followupReminders.length}
+                </span>
+              )}
+            </button>
+          </div>
 
           <div className="font-mono" style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '12px' }}>
             Search History
@@ -662,10 +776,46 @@ Quote: "${evText}"
             {/* Left Workspace Pane: Edit and Preview Pitch */}
             <div style={{ padding: '32px', overflowY: 'auto', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '24px' }}>
               <div className="paper-card" style={{ padding: '24px', backgroundColor: 'var(--paper)', borderRadius: '12px', border: '1px solid var(--border-light)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <h4 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--ink)', fontWeight: 600 }}>Your Outreach Message</h4>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <h4 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--ink)', fontWeight: 600 }}>Multi-Channel Outreach Playbook</h4>
+                  {companyHealthMap[activePromptModal.company.id] && (
+                    <span style={{ fontSize: '0.75rem', fontWeight: 700, padding: '3px 8px', borderRadius: '12px', backgroundColor: companyHealthMap[activePromptModal.company.id].verdict === 'verified_safe' ? '#dcfce7' : '#fee2e2', color: companyHealthMap[activePromptModal.company.id].verdict === 'verified_safe' ? '#15803d' : '#b91c1c' }}>
+                      {companyHealthMap[activePromptModal.company.id].verdict === 'verified_safe' ? '🛡️ Verified Safe' : '🚨 High Risk'}
+                    </span>
+                  )}
+                </div>
                 
+                {/* 5-Channel Tab Bar */}
+                <div style={{ display: 'flex', gap: '6px', borderBottom: '1px solid var(--border-light)', paddingBottom: '8px' }}>
+                  {[
+                    { id: 'email', label: '✉️ Email', key: 'email_draft' },
+                    { id: 'twitter', label: '🐦 Twitter / X', key: 'twitter_post' },
+                    { id: 'discord', label: '💬 Discord', key: 'discord_message' },
+                    { id: 'blog', label: '📝 Blog Post', key: 'blog_title' },
+                    { id: 'followup', label: '⏰ Follow-Up', key: 'followup_email' }
+                  ].map(tab => (
+                    <button
+                      key={tab.id}
+                      onClick={() => {
+                        setActivePlaybookTab(tab.id as any);
+                        if (playbookData && playbookData[tab.key]) {
+                          setPitchText(playbookData[tab.key]);
+                        }
+                      }}
+                      style={{
+                        padding: '6px 12px', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer',
+                        border: '1px solid ' + (activePlaybookTab === tab.id ? 'var(--accent-gold)' : 'var(--border-light)'),
+                        backgroundColor: activePlaybookTab === tab.id ? 'var(--cream)' : 'transparent',
+                        color: activePlaybookTab === tab.id ? 'var(--ink)' : 'var(--text-muted)'
+                      }}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+
                 <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>
-                  Input your working application URL and Loom walkthrough demo below to auto-compile your pitch.
+                  Input your working application URL and Loom walkthrough demo below to auto-compile your pitch across channels.
                 </p>
 
                 <div style={{ display: 'flex', gap: '12px' }}>
@@ -833,8 +983,205 @@ Quote: "${evText}"
         {/* Workspace Content Scroll Area */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '32px 40px', display: 'flex', flexDirection: 'column' }}>
           
-          <div style={{ maxWidth: '800px', margin: '0 auto', width: '100%' }}>
-            
+          <div style={{ maxWidth: '850px', margin: '0 auto', width: '100%' }}>
+
+            {mainTab === 'feed' ? (
+              /* --- PHASE 2: VC DISCOVERY FEED --- */
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                <div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--accent-gold)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Phase 2: Curated Startup Feed</div>
+                  <h2 className="font-serif" style={{ fontSize: '1.6rem', color: 'var(--ink)', margin: '4px 0 8px 0' }}>High-Paying VC-Backed Startups (Tailored for Arjun)</h2>
+                  <p style={{ fontSize: '0.95rem', color: 'var(--text-muted)', margin: 0 }}>
+                    Top-tier Indian & Global VC startups (Peak XV, Accel India, YC, a16z) that give product engineers direct access to CTOs & high pay.
+                  </p>
+                </div>
+
+                {/* Category Filter Tabs */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', borderBottom: '1px solid var(--border-light)', paddingBottom: '12px' }}>
+                  <button 
+                    onClick={() => setFeedFilterCategory('all')}
+                    className="font-mono"
+                    style={{ padding: '6px 14px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600, border: '1px solid', cursor: 'pointer', backgroundColor: feedFilterCategory === 'all' ? 'var(--ink)' : 'var(--paper)', color: feedFilterCategory === 'all' ? 'var(--paper)' : 'var(--text-muted)', borderColor: 'var(--border)' }}
+                  >
+                    All Startups ({discoveryFeed.length})
+                  </button>
+                  <button 
+                    onClick={() => setFeedFilterCategory('india')}
+                    className="font-mono"
+                    style={{ padding: '6px 14px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600, border: '1px solid', cursor: 'pointer', backgroundColor: feedFilterCategory === 'india' ? 'var(--accent-gold)' : 'var(--paper)', color: feedFilterCategory === 'india' ? 'white' : 'var(--text-muted)', borderColor: 'var(--border)' }}
+                  >
+                    High-Paying Indian VC Startups
+                  </button>
+                  <button 
+                    onClick={() => setFeedFilterCategory('yc')}
+                    className="font-mono"
+                    style={{ padding: '6px 14px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600, border: '1px solid', cursor: 'pointer', backgroundColor: feedFilterCategory === 'yc' ? '#f97316' : 'var(--paper)', color: feedFilterCategory === 'yc' ? 'white' : 'var(--text-muted)', borderColor: 'var(--border)' }}
+                  >
+                    Y Combinator (YC)
+                  </button>
+                  <button 
+                    onClick={() => setFeedFilterCategory('early_stage')}
+                    className="font-mono"
+                    style={{ padding: '6px 14px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600, border: '1px solid', cursor: 'pointer', backgroundColor: feedFilterCategory === 'early_stage' ? '#0284c7' : 'var(--paper)', color: feedFilterCategory === 'early_stage' ? 'white' : 'var(--text-muted)', borderColor: 'var(--border)' }}
+                  >
+                    Seed / Series A (&lt;25 eng)
+                  </button>
+                  <button 
+                    onClick={() => setFeedFilterCategory('high_pay')}
+                    className="font-mono"
+                    style={{ padding: '6px 14px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600, border: '1px solid', cursor: 'pointer', backgroundColor: feedFilterCategory === 'high_pay' ? '#16a34a' : 'var(--paper)', color: feedFilterCategory === 'high_pay' ? 'white' : 'var(--text-muted)', borderColor: 'var(--border)' }}
+                  >
+                    High Pay (₹25L+ / $90k+)
+                  </button>
+
+                  <button 
+                    onClick={handleRefreshFeed}
+                    className="font-mono"
+                    style={{ padding: '6px 14px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600, border: '1px solid var(--accent-gold)', cursor: 'pointer', backgroundColor: 'var(--cream)', color: 'var(--accent-gold)', marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                    disabled={isRefreshingFeed}
+                  >
+                    <span>{isRefreshingFeed ? 'Syncing New VC Launches...' : 'Refresh VC Feed'}</span>
+                  </button>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                  {discoveryFeed
+                    .filter(item => {
+                      if (feedFilterCategory === 'india') {
+                        return (item as any).region_tag === 'india' || item.name === 'Appsmith' || item.name === 'SigNoz' || item.name === 'Devtron' || item.name === 'Hasura' || item.name === 'Middleware' || item.name === 'Atlan';
+                      }
+                      if (feedFilterCategory === 'yc') {
+                        return item.investor_tags && item.investor_tags.some((t: string) => t.toLowerCase().includes('yc'));
+                      }
+                      if (feedFilterCategory === 'early_stage') {
+                        return (item.employee_count_approx || 10) <= 25;
+                      }
+                      return true;
+                    })
+                    .map(item => {
+                      const isIndian = (item as any).region_tag === 'india' || item.name === 'Appsmith' || item.name === 'SigNoz' || item.name === 'Devtron' || item.name === 'Hasura' || item.name === 'Middleware' || item.name === 'Atlan';
+                      const compTier = (item as any).compensation_tier || (isIndian ? "₹25L - ₹50L" : "$90k - $140k");
+
+                      return (
+                        <div 
+                          key={item.id} 
+                          className="paper-card" 
+                          style={{ padding: '20px', borderRadius: '12px', backgroundColor: 'var(--paper)', border: '1px solid var(--border-light)', display: 'flex', flexDirection: 'column', gap: '12px', cursor: 'pointer' }}
+                          onClick={() => {
+                            setLinkInput(item.url);
+                            setMainTab('analyzer');
+                            handleExtractCompany(item.url);
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                              <CompanyLogo name={item.name} size={32} />
+                              <div>
+                                <div style={{ fontWeight: 700, fontSize: '1.05rem', color: 'var(--ink)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  <span>{item.name}</span>
+                                  {isIndian && <span style={{ fontSize: '0.7rem', padding: '1px 5px', borderRadius: '4px', backgroundColor: '#fef3c7', color: '#92400e', fontWeight: 700 }}>India</span>}
+                                </div>
+                                <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>{item.funding_stage ? item.funding_stage.toUpperCase() : 'SEED'} • ~{item.employee_count_approx || 10} members</div>
+                              </div>
+                            </div>
+
+                            {/* Health Badge */}
+                            {item.health?.verdict === 'verified_safe' ? (
+                              <span style={{ fontSize: '0.7rem', backgroundColor: '#dcfce7', color: '#15803d', border: '1px solid #bbf7d0', padding: '2px 8px', borderRadius: '12px', fontWeight: 700 }}>
+                                Verified Safe
+                              </span>
+                            ) : item.health?.verdict === 'high_risk' ? (
+                              <span style={{ fontSize: '0.7rem', backgroundColor: '#fee2e2', color: '#b91c1c', border: '1px solid #fca5a5', padding: '2px 8px', borderRadius: '12px', fontWeight: 700 }}>
+                                High Risk
+                              </span>
+                            ) : (
+                              <span style={{ fontSize: '0.7rem', backgroundColor: '#fef3c7', color: '#b45309', border: '1px solid #fde68a', padding: '2px 8px', borderRadius: '12px', fontWeight: 700 }}>
+                                Verified Safe
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Compensation Tier Badge */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span className="font-mono" style={{ fontSize: '0.72rem', backgroundColor: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0', padding: '2px 8px', borderRadius: '6px', fontWeight: 700 }}>
+                              Pay: {compTier}
+                            </span>
+                            <span className="font-mono" style={{ fontSize: '0.72rem', backgroundColor: 'var(--cream)', color: 'var(--ink)', border: '1px solid var(--border-light)', padding: '2px 8px', borderRadius: '6px', fontWeight: 600 }}>
+                              Direct CTO Outreach
+                            </span>
+                          </div>
+
+                          <div style={{ fontSize: '0.8rem', backgroundColor: 'var(--cream)', color: 'var(--ink)', padding: '6px 10px', borderRadius: '6px', fontWeight: 600 }}>
+                            {item.why_for_you || "Matches your builder profile"}
+                          </div>
+
+                          {/* Tech stack tags */}
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                            {item.tech_stack_tags?.map((t: string) => (
+                              <span key={t} style={{ fontSize: '0.7rem', backgroundColor: 'var(--surface)', border: '1px solid var(--border-light)', color: 'var(--text-muted)', padding: '2px 6px', borderRadius: '4px' }}>
+                                {t}
+                              </span>
+                            ))}
+                          </div>
+
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px', fontSize: '0.8rem', color: 'var(--accent-gold)', fontWeight: 600 }}>
+                            <span>Inspect Opportunities ({item.evidence_count} evidence items) →</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+            ) : mainTab === 'tracker' ? (
+              /* --- PHASE 5: KANBAN TRACKER & REMINDERS --- */
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                <div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--accent-gold)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Phase 5: Workflow Tracker</div>
+                  <h2 className="font-serif" style={{ fontSize: '1.6rem', color: 'var(--ink)', margin: '4px 0 8px 0' }}>Outreach Kanban & Follow-up Reminders</h2>
+                </div>
+
+                {/* Reminders Alert Box */}
+                {followupReminders.length > 0 && (
+                  <div style={{ padding: '16px 20px', backgroundColor: '#fef2f2', border: '1px solid #fca5a5', borderRadius: '12px', color: '#991b1b' }}>
+                    <div style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '4px' }}>⏰ 7-Day Follow-Up Reminders Due ({followupReminders.length})</div>
+                    {followupReminders.map((rem: any) => (
+                      <div key={rem.application_id} style={{ marginTop: '8px', padding: '10px', backgroundColor: '#fff', borderRadius: '8px', border: '1px solid #fecaca', fontSize: '0.85rem' }}>
+                        <div><strong>{rem.company_name}</strong> — Reached out {rem.days_since_outreach} days ago without a reply.</div>
+                        <pre style={{ margin: '8px 0 0 0', padding: '8px', backgroundColor: '#f9fafb', borderRadius: '4px', fontSize: '0.75rem', whiteSpace: 'pre-wrap' }}>
+                          {rem.follow_up_draft}
+                        </pre>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Kanban Columns */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '12px', overflowX: 'auto' }}>
+                  {['researching', 'building', 'reached_out', 'replied', 'interviewing', 'closed'].map(col => {
+                    const colItems = kanbanBoard ? kanbanBoard[col] || [] : [];
+                    return (
+                      <div key={col} style={{ backgroundColor: 'var(--surface)', padding: '12px', borderRadius: '10px', border: '1px solid var(--border-light)', minWidth: '130px' }}>
+                        <div style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-dim)', marginBottom: '8px' }}>
+                          {col.replace('_', ' ')} ({colItems.length})
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {colItems.map((app: any) => (
+                            <div key={app.id} style={{ padding: '10px', backgroundColor: 'var(--paper)', borderRadius: '6px', border: '1px solid var(--border-light)', fontSize: '0.8rem' }}>
+                              <div style={{ fontWeight: 700, color: 'var(--ink)' }}>{app.company_name}</div>
+                              {app.demo_url && (
+                                <a href={app.demo_url} target="_blank" rel="noreferrer" style={{ fontSize: '0.7rem', color: 'var(--accent-gold)' }}>Live Demo 🔗</a>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              /* --- ANALYZER TAB --- */
+              <>
             {/* 1. Input Section */}
             <div style={{ marginBottom: '40px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
@@ -865,7 +1212,7 @@ Quote: "${evText}"
                   }}
                 />
                 <button 
-                  onClick={handleExtractCompany} 
+                  onClick={() => handleExtractCompany()} 
                   className="btn-primary" 
                   style={{ padding: '10px 20px', borderRadius: '8px', fontSize: '0.95rem' }}
                   disabled={isScanning}
@@ -950,7 +1297,8 @@ Quote: "${evText}"
                       No opportunities found for {activeCompany}. Try searching another company.
                     </div>
                   ) : (
-                filteredCards.map(item => {
+                    <>
+                      {filteredCards.map(item => {
                   const ev = item.evidence_items[0];
                   const matchScorePct = (item.card.profile_match_score).toFixed(0);
                   
@@ -982,18 +1330,27 @@ Quote: "${evText}"
 
                       <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
                         <div>
-                          <h3 style={{ fontSize: '1.3rem', margin: '0 0 8px 0', color: 'var(--ink)' }}>{item.gap_cluster.label}</h3>
-                          <p style={{ margin: 0, fontSize: '0.95rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>{item.why_matches_you}</p>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--accent-gold)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>🎯 Customer Friction & Product Gap</div>
+                          <h3 style={{ fontSize: '1.25rem', margin: '0 0 8px 0', color: 'var(--ink)', fontWeight: 700 }}>{item.gap_cluster.label}</h3>
+                          <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>{item.why_matches_you}</p>
+                        </div>
+
+                        {/* Product Engineering Scope for Arjun */}
+                        <div style={{ backgroundColor: 'var(--cream)', padding: '14px 16px', borderRadius: '10px', border: '1px solid var(--border-light)' }}>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--ink)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>🛠️ Suggested 4–6 Hour Product Scope (For Arjun)</div>
+                          <div style={{ fontSize: '0.88rem', color: 'var(--ink)', lineHeight: 1.4, fontWeight: 500 }}>
+                            Build a lightweight <strong>Next.js + Tailwind Web Sandbox / CLI Extension</strong> for {item.company.name} to resolve this gap. Deploy live to Vercel/Railway.
+                          </div>
                         </div>
 
                         {ev && (
-                          <div style={{ backgroundColor: 'var(--surface)', padding: '14px 16px', borderRadius: '12px', border: '1px solid var(--paper-edge)' }}>
-                            <div className="font-mono" style={{ fontSize: '0.75rem', color: 'var(--ink)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+                          <div style={{ backgroundColor: 'var(--surface)', padding: '14px 16px', borderRadius: '10px', border: '1px solid var(--paper-edge)' }}>
+                            <div className="font-mono" style={{ fontSize: '0.75rem', color: 'var(--ink)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
                               <ShieldAlert size={14} color="var(--accent-gold)" />
                               <span>Verified Receipt</span>
                             </div>
-                            <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', fontStyle: 'italic', marginBottom: '10px', borderLeft: '2px solid var(--accent-gold)', paddingLeft: '10px' }}>
-                              "{ev.raw_text}"
+                            <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontStyle: 'italic', marginBottom: '8px', borderLeft: '2px solid var(--accent-gold)', paddingLeft: '10px', maxHeight: '80px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              "{ev.raw_text.length > 220 ? ev.raw_text.slice(0, 220) + "..." : ev.raw_text}"
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} className="font-mono">
                               <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>{ev.source_type.toUpperCase()}</span>
@@ -1008,7 +1365,7 @@ Quote: "${evText}"
 
                       <div style={{ padding: '16px 24px', backgroundColor: 'var(--surface)', borderTop: '1px solid var(--paper-edge)' }}>
                         <button 
-                          onClick={() => setActivePromptModal(item)}
+                          onClick={() => handleEnrollOpportunity(item)}
                           className="btn-primary"
                           style={{ width: '100%', padding: '12px', fontSize: '0.95rem' }}
                         >
@@ -1018,15 +1375,17 @@ Quote: "${evText}"
                       </div>
                     </div>
                   );
-                })
-              )}
+                })}
               </>
-              )}
-            </div>
-
-          </div>
+            )}
+          </>
+        )}
         </div>
-      </div>
+      </>
+    )}
+    </div>
+  </div>
+</div>
 
       {/* RIGHT PANE - RESOURCES OR PROMPT HANDOFF */}
       <div style={{
@@ -1091,7 +1450,49 @@ Quote: "${evText}"
               </div>
             </div>
             
+            {copiedPromptToast && (
+              <div style={{ backgroundColor: '#dcfce7', borderBottom: '1px solid #bbf7d0', color: '#15803d', padding: '8px 16px', fontSize: '0.8rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Check size={14} />
+                <span>AI Engineering Prompt copied to clipboard! Paste directly into ChatGPT / Claude.</span>
+              </div>
+            )}
+
             <div style={{ padding: '20px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '20px' }}>
+
+              {/* Target Company Header Card with Direct Links */}
+              <div className="paper-card" style={{ padding: '16px 20px', backgroundColor: 'var(--surface)', borderRadius: '12px', border: '1px solid var(--border-light)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <CompanyLogo name={activePromptModal.company.name} size={32} />
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: '1.1rem', color: 'var(--ink)' }}>{activePromptModal.company.name}</div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>Target Company • VC Backed</div>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                  {activePromptModal.company.url && (
+                    <a 
+                      href={activePromptModal.company.url} 
+                      target="_blank" 
+                      rel="noreferrer" 
+                      className="font-mono"
+                      style={{ fontSize: '0.78rem', color: 'var(--accent-gold)', display: 'inline-flex', alignItems: 'center', gap: '4px', textDecoration: 'none', fontWeight: 600, padding: '6px 12px', borderRadius: '6px', backgroundColor: 'var(--cream)', border: '1px solid var(--border-light)', whiteSpace: 'nowrap' }}
+                    >
+                      <span>Website ↗</span>
+                    </a>
+                  )}
+                  {activePromptModal.company.careers_page_url && (
+                    <a 
+                      href={activePromptModal.company.careers_page_url} 
+                      target="_blank" 
+                      rel="noreferrer" 
+                      className="font-mono"
+                      style={{ fontSize: '0.78rem', color: 'var(--ink)', display: 'inline-flex', alignItems: 'center', gap: '4px', textDecoration: 'none', fontWeight: 600, padding: '6px 12px', borderRadius: '6px', backgroundColor: 'var(--paper)', border: '1px solid var(--border)', whiteSpace: 'nowrap' }}
+                    >
+                      <span>Careers ↗</span>
+                    </a>
+                  )}
+                </div>
+              </div>
 
               <div className="paper-card" style={{ padding: '20px', backgroundColor: 'var(--surface)', borderRadius: '12px', border: '1px solid var(--border-light)' }}>
                 <h4 className="font-mono" style={{ fontSize: '0.75rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>The Opportunity</h4>
@@ -1104,6 +1505,22 @@ Quote: "${evText}"
                 <h4 className="font-mono" style={{ fontSize: '0.75rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>The Gap Identified</h4>
                 <div style={{ fontSize: '0.95rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
                   {getOpportunityDetails(activePromptModal).gap}
+                </div>
+              </div>
+
+              {/* Senior-to-Junior Build Blueprint Card (Theme Matched) */}
+              <div className="paper-card" style={{ padding: '20px', backgroundColor: 'rgba(152, 118, 26, 0.06)', borderRadius: '12px', border: '1px solid rgba(152, 118, 26, 0.2)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <h4 className="font-mono" style={{ fontSize: '0.75rem', color: 'var(--accent-gold)', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0, fontWeight: 700 }}>🛠️ Senior Engineer's 4-Hour Build Plan</h4>
+                  <span style={{ fontSize: '0.7rem', backgroundColor: 'var(--surface)', color: 'var(--ink)', padding: '2px 8px', borderRadius: '12px', border: '1px solid var(--paper-edge)', fontWeight: 600 }}>Next.js + Tailwind</span>
+                </div>
+                <div style={{ fontSize: '0.88rem', color: 'var(--ink)', lineHeight: 1.5 }}>
+                  <strong>How Arjun Should Build This:</strong>
+                  <ol style={{ margin: '8px 0 0 0', paddingLeft: '20px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <li><strong>Hour 1:</strong> Scaffold Next.js dashboard UI with Tailwind layout & mock JSON data.</li>
+                    <li><strong>Hour 2–3:</strong> Connect API route to resolve <em>"{activePromptModal.gap_cluster.label}"</em>.</li>
+                    <li><strong>Hour 4:</strong> Deploy live to Vercel/Railway free tier and record a 2-minute Loom walkthrough demo.</li>
+                  </ol>
                 </div>
               </div>
 
@@ -1122,11 +1539,15 @@ Quote: "${evText}"
               </div>
               
               <div className="paper-card" style={{ padding: '20px', backgroundColor: 'var(--surface)', borderRadius: '12px', border: '1px solid var(--border-light)' }}>
-                <h4 className="font-mono" style={{ fontSize: '0.75rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '12px' }}>The Evidence Sources</h4>
-                {activePromptModal.evidence_items.map((ev, i) => (
+                <h4 className="font-mono" style={{ fontSize: '0.75rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '12px' }}>Verified Evidence Receipts</h4>
+                {activePromptModal.evidence_items.slice(0, 2).map((ev, i) => (
                   <div key={i} style={{ borderLeft: '3px solid var(--accent-gold)', paddingLeft: '12px', marginBottom: '12px' }}>
-                    <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', fontStyle: 'italic', marginBottom: '8px' }}>"{ev.raw_text}"</div>
-                    <a href={ev.source_url} target="_blank" rel="noreferrer" style={{ fontSize: '0.8rem', color: 'var(--accent-gold)', textDecoration: 'none', fontWeight: 600 }}>Source ({ev.source_type}) ↗</a>
+                    <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontStyle: 'italic', marginBottom: '6px', lineHeight: 1.4 }}>
+                      "{ev.raw_text.length > 150 ? ev.raw_text.slice(0, 150) + "..." : ev.raw_text}"
+                    </div>
+                    <a href={ev.source_url} target="_blank" rel="noreferrer" style={{ fontSize: '0.78rem', color: 'var(--accent-gold)', textDecoration: 'none', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                      <span>View Full Source Thread ({ev.source_type.replace('_', ' ').toUpperCase()}) ↗</span>
+                    </a>
                   </div>
                 ))}
               </div>
@@ -1308,10 +1729,9 @@ Quote: "${evText}"
               </div>
             )}
           </div>
-
-          </div>
-        </>
-        )}
+        </div>
+      </>
+      )}
       </div>
     </>
     )}
