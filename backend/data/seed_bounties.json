@@ -1,6 +1,76 @@
 [
   {
-    "id": "bounty_posthog_01",
+    "id": "hackathon_hashnode_01",
+    "title": "Hashnode Global AI & Web Developer Hackathon",
+    "company_name": "Hashnode",
+    "company_url": "https://hashnode.com",
+    "reward_amount": "$3,000 Cash",
+    "type": "hackathon",
+    "tech_stack": ["Next.js", "React", "Python", "Tailwind"],
+    "est_hours": 6,
+    "platform_source": "Hashnode Hackathons",
+    "source_url": "https://hashnode.com/hackathons",
+    "description": "Active solo developer hackathon for building open-source AI web tools, API wrappers, and developer dashboards.",
+    "senior_build_plan": "Hour 1: Next.js + Tailwind layout. Hour 2-4: Integrate AI API endpoints. Hour 5-6: Write Hashnode article & submit live Vercel URL."
+  },
+  {
+    "id": "hackathon_unstop_02",
+    "title": "Unstop National High-Pay Tech Hackathon Series",
+    "company_name": "Unstop Tech",
+    "company_url": "https://unstop.com",
+    "reward_amount": "₹1,500,000 Cash Pool",
+    "type": "hackathon",
+    "tech_stack": ["TypeScript", "FastAPI", "React", "Python"],
+    "est_hours": 8,
+    "platform_source": "Unstop Hackathons",
+    "source_url": "https://unstop.com/hackathons",
+    "description": "Solo-friendly developer hackathons hosted by top Indian tech firms & VC-backed startups for product engineers.",
+    "senior_build_plan": "Hour 1-2: Pick challenge track & setup FastAPI backend. Hour 3-6: React dashboard UI. Hour 7-8: Submit video demo & repo link."
+  },
+  {
+    "id": "hackathon_taikai_03",
+    "title": "TAIKAI Global Builder Hackathon & Grants",
+    "company_name": "TAIKAI Network",
+    "company_url": "https://taikai.network",
+    "reward_amount": "$5,000 Cash",
+    "type": "hackathon",
+    "tech_stack": ["React", "TypeScript", "Node.js", "APIs"],
+    "est_hours": 6,
+    "platform_source": "TAIKAI Network",
+    "source_url": "https://taikai.network/",
+    "description": "Open innovation challenge for solo developers building API extensions, web widgets, and AI productivity tools.",
+    "senior_build_plan": "Hour 1: TAIKAI project registration. Hour 2-4: Build Next.js UI integration. Hour 5-6: Submit proof of work & claim cash."
+  },
+  {
+    "id": "hackathon_hackindia_04",
+    "title": "HackIndia FutureTech & AI Sprint 2026",
+    "company_name": "HackIndia",
+    "company_url": "https://hackindia.org",
+    "reward_amount": "₹100,000 Cash Pool",
+    "type": "hackathon",
+    "tech_stack": ["Python", "React", "FastAPI"],
+    "est_hours": 8,
+    "platform_source": "HackIndia",
+    "source_url": "https://hackindia.org/",
+    "description": "36-hour sprint for building AI applications, API tools, and developer productivity software.",
+    "senior_build_plan": "Hour 1: Register on HackIndia portal. Hour 2-5: Implement core product workflow. Hour 6-8: Record 2-min Loom demo & submit."
+  },
+  {
+    "id": "hackathon_mlh_05",
+    "title": "MLH Global Solo Developer Sprint 2026",
+    "company_name": "Major League Hacking",
+    "company_url": "https://mlh.io",
+    "reward_amount": "$2,500 Cash",
+    "type": "hackathon",
+    "tech_stack": ["TypeScript", "Next.js", "Tailwind"],
+    "est_hours": 6,
+    "platform_source": "MLH Hackathons",
+    "source_url": "https://mlh.io/seasons/2026/events",
+    "description": "Upcoming global weekend hackathon sprint for software engineers building web applications & micro-tools.",
+    "senior_build_plan": "Hour 1: Register for weekend event. Hour 2-4: Build Next.js MVP. Hour 5-6: Submit Devpost entry link."
+  },
+  {
+    "id": "bounty_posthog_06",
     "title": "Build Webhook Payload Visual Inspector Plugin",
     "company_name": "PostHog",
     "company_url": "https://posthog.com",
@@ -10,11 +80,11 @@
     "est_hours": 5,
     "platform_source": "GitHub Bounties",
     "source_url": "https://github.com/PostHog/posthog/issues",
-    "description": "PostHog settings panel currently lacks a visual inspector for project webhooks. Build a clean React payload viewer component that polls webhook log API, renders JSON side-by-side, and includes re-delivery action.",
-    "senior_build_plan": "Hour 1: Scaffold Next.js dashboard UI. Hour 2-3: Connect PostHog API & JSON tree component. Hour 4: Deploy Vercel demo & submit PR."
+    "description": "PostHog settings panel currently lacks a visual inspector for project webhooks. Build a clean React payload viewer component.",
+    "senior_build_plan": "Hour 1: Scaffold Next.js dashboard UI. Hour 2-3: Connect PostHog API & JSON tree component. Hour 4: Deploy Vercel demo."
   },
   {
-    "id": "bounty_supabase_02",
+    "id": "bounty_supabase_07",
     "title": "Create Next.js Realtime Storage Bandwidth Meter Widget",
     "company_name": "Supabase",
     "company_url": "https://supabase.com",
@@ -28,7 +98,7 @@
     "senior_build_plan": "Hour 1: Next.js setup with Recharts. Hour 2-3: Supabase JS SDK storage events integration. Hour 4: Live demo submission."
   },
   {
-    "id": "hackathon_superteam_03",
+    "id": "hackathon_superteam_08",
     "title": "Superteam Solo Developer Bounties & Builder Grants",
     "company_name": "Superteam Earn",
     "company_url": "https://earn.superteam.fun/",
@@ -39,24 +109,10 @@
     "platform_source": "Superteam Earn",
     "source_url": "https://earn.superteam.fun/",
     "description": "Active solo builder bounties and micro-grants for building frontend web apps, API integrations, and developer tools.",
-    "senior_build_plan": "Hour 1: Choose active open bounty on Superteam Earn. Hour 2-4: Build Next.js UI integration. Hour 5-6: Submit proof of work & claim cash."
+    "senior_build_plan": "Hour 1: Choose active open bounty. Hour 2-4: Build Next.js UI integration. Hour 5-6: Submit proof of work & claim cash."
   },
   {
-    "id": "bounty_coolify_04",
-    "title": "Coolify Cloud Deployment Status Notification Extension",
-    "company_name": "Coolify",
-    "company_url": "https://coolify.io",
-    "reward_amount": "$350 Cash",
-    "type": "bounty",
-    "tech_stack": ["React", "TypeScript", "Tailwind"],
-    "est_hours": 4,
-    "platform_source": "Polar.sh Bounties",
-    "source_url": "https://github.com/coollabsio/coolify/issues",
-    "description": "Build an open-source visual status widget for Coolify instance health, monitoring container CPU/RAM and triggering Slack webhooks.",
-    "senior_build_plan": "Hour 1: Next.js status page boilerplate. Hour 2-3: Coolify API polling adapter. Hour 4: Vercel demo & PR submission."
-  },
-  {
-    "id": "bounty_devtron_05",
+    "id": "bounty_devtron_09",
     "title": "Kubernetes Pod Metrics Visual Timeline Component",
     "company_name": "Devtron Labs",
     "company_url": "https://devtron.ai",
@@ -66,11 +122,11 @@
     "est_hours": 6,
     "platform_source": "Peak XV Ecosystem Grant",
     "source_url": "https://github.com/devtron-labs/devtron/issues",
-    "description": "Build a React Gantt-chart timeline component for Devtron dashboard parsing Kubernetes pod deployment logs into step-by-step visual bars.",
+    "description": "Build a React Gantt-chart timeline component for Devtron dashboard parsing Kubernetes pod deployment logs.",
     "senior_build_plan": "Hour 1: React log parser component. Hour 2-4: Timeline chart rendering with Tailwind. Hour 5-6: Devtron PR submission."
   },
   {
-    "id": "bounty_appsmith_06",
+    "id": "bounty_appsmith_10",
     "title": "Appsmith Custom Widget Integration & Extension",
     "company_name": "Appsmith",
     "company_url": "https://appsmith.com",
@@ -80,7 +136,7 @@
     "est_hours": 5,
     "platform_source": "GitHub Bounties",
     "source_url": "https://github.com/appsmithorg/appsmith/issues",
-    "description": "Build a custom React chart widget extension for Appsmith low-code platform allowing 1-click JSON export for Indian enterprise users.",
+    "description": "Build a custom React chart widget extension for Appsmith low-code platform allowing 1-click JSON export.",
     "senior_build_plan": "Hour 1: Set up Appsmith custom widget SDK. Hour 2-4: Build React chart component. Hour 5: Submit PR on GitHub."
   }
 ]
