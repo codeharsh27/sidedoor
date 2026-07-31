@@ -360,11 +360,12 @@ export const apiClient = {
   /**
    * Fetches curated product engineering bounties & solo hackathons
    */
-  async getBounties(bountyType?: string, techStack?: string): Promise<BountyItem[]> {
+  async getBounties(bountyType?: string, techStack?: string, forceRefresh: boolean = false): Promise<BountyItem[]> {
     let url = `${BASE_URL}/bounties`;
     const params = new URLSearchParams();
     if (bountyType && bountyType !== 'all') params.append('bounty_type', bountyType);
     if (techStack) params.append('tech_stack', techStack);
+    if (forceRefresh) params.append('force_refresh', 'true');
     if (params.toString()) url += `?${params.toString()}`;
 
     const res = await fetch(url);

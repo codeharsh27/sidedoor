@@ -175,6 +175,22 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ userProfile, onBac
     }
   };
 
+  const [isRefreshingBounties, setIsRefreshingBounties] = useState(false);
+
+  const handleHardRefreshBounties = async () => {
+    setIsRefreshingBounties(true);
+    try {
+      const fresh = await apiClient.getBounties(undefined, undefined, true);
+      if (fresh && fresh.length > 0) {
+        setBountiesList(fresh);
+      }
+    } catch (e) {
+      console.error("Bounties hard refresh failed:", e);
+    } finally {
+      setTimeout(() => setIsRefreshingBounties(false), 800);
+    }
+  };
+
   // Load real cards on mount or user change
   useEffect(() => {
     if (userProfile?.user_id) {
@@ -1152,12 +1168,17 @@ Arjun is building a 4-hour MVP to showcase his skills to ${item.company.name}.
             ) : mainTab === 'bounties' ? (
               /* --- EARN WHILE BUILDING (PAID BOUNTIES & SOLO HACKATHONS) --- */
               <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                <div>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--accent-gold)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Short-Term Runway Cash</div>
-                  <h2 className="font-serif" style={{ fontSize: '1.6rem', color: 'var(--ink)', margin: '4px 0 8px 0' }}>Paid GitHub Bounties & Solo Developer Hackathons</h2>
-                  <p style={{ fontSize: '0.95rem', color: 'var(--text-muted)', margin: 0 }}>
-                    Short-term cash opportunities ($150 - $2,000) tailored for product engineers. Earn cash in 3-10 days while building proof-of-work portfolio items.
-                  </p>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--accent-gold)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Short-Term Runway Cash</div>
+                    <h2 className="font-serif" style={{ fontSize: '1.6rem', color: 'var(--ink)', margin: '4px 0 8px 0' }}>Paid GitHub Bounties & Solo Developer Hackathons</h2>
+                    <p style={{ fontSize: '0.95rem', color: 'var(--text-muted)', margin: 0 }}>
+                      Short-term cash opportunities ($150 - $2,000) tailored for product engineers. Earn cash in 3-10 days while building proof-of-work portfolio items.
+                    </p>
+                  </div>
+                  <div style={{ backgroundColor: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0', padding: '6px 12px', borderRadius: '8px', fontSize: '0.75rem', fontWeight: 700, whiteSpace: 'nowrap' }} className="font-mono">
+                    Auto-Refreshes Every 6 Hours
+                  </div>
                 </div>
 
                 {/* Category Filter Chips */}
@@ -1196,6 +1217,15 @@ Arjun is building a 4-hour MVP to showcase his skills to ${item.company.name}.
                     style={{ padding: '6px 14px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600, border: '1px solid', cursor: 'pointer', backgroundColor: bountyFilterCategory === 'inr' ? '#16a34a' : 'var(--paper)', color: bountyFilterCategory === 'inr' ? 'white' : 'var(--text-muted)', borderColor: 'var(--border)' }}
                   >
                     India / INR Grants (₹35,000+)
+                  </button>
+
+                  <button 
+                    onClick={handleHardRefreshBounties}
+                    className="font-mono"
+                    style={{ padding: '6px 14px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600, border: '1px solid var(--accent-gold)', cursor: 'pointer', backgroundColor: 'var(--cream)', color: 'var(--accent-gold)', marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                    disabled={isRefreshingBounties}
+                  >
+                    <span>{isRefreshingBounties ? 'Syncing Live Bounties...' : 'Hard Refresh Bounties'}</span>
                   </button>
                 </div>
 
