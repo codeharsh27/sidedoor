@@ -556,6 +556,7 @@ Arjun is building a 4-hour MVP to showcase his skills to ${item.company.name}.
                 fontWeight: 600, fontSize: '0.9rem', cursor: 'pointer', textAlign: 'left'
               }}
             >
+              <Building2 size={16} color="var(--accent-gold)" />
               <span>VC Discovery Feed</span>
             </button>
             <button
@@ -568,6 +569,7 @@ Arjun is building a 4-hour MVP to showcase his skills to ${item.company.name}.
                 fontWeight: 600, fontSize: '0.9rem', cursor: 'pointer', textAlign: 'left'
               }}
             >
+              <Search size={16} color="var(--accent-gold)" />
               <span>Company Analyzer</span>
             </button>
             <button
@@ -580,6 +582,7 @@ Arjun is building a 4-hour MVP to showcase his skills to ${item.company.name}.
                 fontWeight: 600, fontSize: '0.9rem', cursor: 'pointer', textAlign: 'left'
               }}
             >
+              <Terminal size={16} color="var(--accent-gold)" />
               <span>Earn ($150-$2,000)</span>
             </button>
             <button
@@ -592,6 +595,7 @@ Arjun is building a 4-hour MVP to showcase his skills to ${item.company.name}.
                 fontWeight: 600, fontSize: '0.9rem', cursor: 'pointer', textAlign: 'left'
               }}
             >
+              <Check size={16} color="var(--accent-gold)" />
               <span>Kanban Tracker</span>
               {followupReminders.length > 0 && (
                 <span style={{ backgroundColor: '#ef4444', color: '#fff', borderRadius: '10px', fontSize: '0.7rem', padding: '2px 6px', fontWeight: 700 }}>
@@ -900,7 +904,7 @@ Arjun is building a 4-hour MVP to showcase his skills to ${item.company.name}.
                         fontWeight: isEditingPitch ? 600 : 400
                       }}
                     >
-                      {isEditingPitch ? 'Done ✅' : 'Edit ✏️'}
+                      {isEditingPitch ? 'Done' : 'Edit'}
                     </button>
                   </div>
                   <textarea 
@@ -1313,7 +1317,7 @@ Arjun is building a 4-hour MVP to showcase his skills to ${item.company.name}.
                 {/* Reminders Alert Box */}
                 {followupReminders.length > 0 && (
                   <div style={{ padding: '16px 20px', backgroundColor: '#fef2f2', border: '1px solid #fca5a5', borderRadius: '12px', color: '#991b1b' }}>
-                    <div style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '4px' }}>⏰ 7-Day Follow-Up Reminders Due ({followupReminders.length})</div>
+                    <div style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '4px' }}>7-Day Follow-Up Reminders Due ({followupReminders.length})</div>
                     {followupReminders.map((rem: any) => (
                       <div key={rem.application_id} style={{ marginTop: '8px', padding: '10px', backgroundColor: '#fff', borderRadius: '8px', border: '1px solid #fecaca', fontSize: '0.85rem' }}>
                         <div><strong>{rem.company_name}</strong> — Reached out {rem.days_since_outreach} days ago without a reply.</div>
