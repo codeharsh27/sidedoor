@@ -18,6 +18,35 @@ class HackerNewsCollector:
     def source_type(self) -> str:
         return "hacker_news"
 
+    def _is_resume_or_job_ad(self, text: str) -> bool:
+        """Check if text is a developer resume or job seeker post."""
+        if not text:
+            return True
+        t_lower = text.lower()
+        resume_signals = [
+            "seeking work",
+            "freelancer?",
+            "who is hiring?",
+            "willing to relocate:",
+            "industries i am not willing to work in:",
+            "resume/cv:",
+        ]
+        if any(sig in t_lower for sig in resume_signals):
+            return True
+        
+        # Check combination signals (e.g., Location: + Remote: + Resume: or Technologies:)
+        combo_count = 0
+        if "location:" in t_lower:
+            combo_count += 1
+        if "remote:" in t_lower or "remote :" in t_lower:
+            combo_count += 1
+        if "resume:" in t_lower or "cv:" in t_lower:
+            combo_count += 1
+        if "technologies:" in t_lower:
+            combo_count += 1
+        
+        return combo_count >= 3
+
     def _clean_html(self, html_content: str) -> str:
         """Helper to convert Algolia's HTML comment/post content to clean text."""
         if not html_content:
@@ -34,11 +63,88 @@ class HackerNewsCollector:
         if not date_str:
             return None
         try:
-            # Algolia date is e.g. "2023-10-24T12:34:56.000Z"
             dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
             return dt.astimezone(timezone.utc)
         except Exception:
             return None
+
+    async def _fetch_query(
+        self,
+        client: httpx.AsyncClient,
+        query: str,
+    ) -> list[EvidenceItemCreate]:
+        """Run one HN search (comments + stories) for a single query string."""
+        items: list[EvidenceItemCreate] = []
+
+        # 1. Comments
+        try:
+            response = await client.get(
+                "https://hn.algolia.com/api/v1/search",
+                params={"query": query, "tags": "comment", "hitsPerPage": 40},
+            )
+            if response.status_code == 200:
+                for hit in response.json().get("hits", []):
+                    object_id = hit.get("objectID")
+                    comment_text = hit.get("comment_text")
+                    author = hit.get("author")
+                    created_at_raw = hit.get("created_at")
+
+                    if not object_id or not comment_text:
+                        continue
+                    clean_text = self._clean_html(comment_text)
+                    if len(clean_text) < 30 or self._is_resume_or_job_ad(clean_text):
+                        continue
+
+                    items.append(
+                        EvidenceItemCreate(
+                            source_type=self.source_type,
+                            source_url=f"https://news.ycombinator.com/item?id={object_id}",
+                            raw_text=clean_text,
+                            author_handle=author,
+                            posted_at=self._parse_created_at(created_at_raw),
+                        )
+                    )
+        except Exception as e:
+            logger.error("HN comment collection error for query '%s': %s", query, e)
+
+        # 2. Stories
+        try:
+            response = await client.get(
+                "https://hn.algolia.com/api/v1/search",
+                params={"query": query, "tags": "story", "hitsPerPage": 20},
+            )
+            if response.status_code == 200:
+                for hit in response.json().get("hits", []):
+                    object_id = hit.get("objectID")
+                    title = hit.get("title")
+                    story_text = hit.get("story_text")
+                    author = hit.get("author")
+                    created_at_raw = hit.get("created_at")
+                    points = hit.get("points", 0)
+
+                    if not object_id or not title:
+                        continue
+
+                    combined_text = title
+                    if story_text:
+                        combined_text += f"\n\n{self._clean_html(story_text)}"
+
+                    if (points <= 1 and not story_text) or self._is_resume_or_job_ad(combined_text):
+                        continue
+
+                    items.append(
+                        EvidenceItemCreate(
+                            source_type=self.source_type,
+                            source_url=f"https://news.ycombinator.com/item?id={object_id}",
+                            raw_text=combined_text,
+                            author_handle=author,
+                            posted_at=self._parse_created_at(created_at_raw),
+                        )
+                    )
+        except Exception as e:
+            logger.error("HN story collection error for query '%s': %s", query, e)
+
+        return items
 
     async def collect(
         self,
@@ -46,113 +152,42 @@ class HackerNewsCollector:
         company_url: str,
         github_repo_url: str | None = None,
         careers_page_url: str | None = None,
+        search_aliases: list[str] | None = None,
     ) -> list[EvidenceItemCreate]:
-        """Query Algolia Search API for comments and stories mentioning the company."""
+        """Query Algolia Search API for comments and stories mentioning the company.
+
+        Runs one search per alias in search_aliases (deduplicated by source_url).
+        Falls back to company_name alone if no aliases provided.
+        """
         if not company_name or not company_name.strip():
             return []
 
-        # Sanitize query: keep alphanumeric and basic punctuation to avoid API break
-        query = "".join(c for c in company_name if c.isalnum() or c in " -_").strip()
-        if not query:
+        # Build alias list — sanitize each entry
+        raw_aliases = search_aliases if search_aliases else [company_name]
+        queries: list[str] = []
+        for alias in raw_aliases:
+            sanitized = "".join(c for c in alias if c.isalnum() or c in " -_").strip()
+            if sanitized and sanitized not in queries:
+                queries.append(sanitized)
+
+        if not queries:
             return []
 
-        evidence_items: list[EvidenceItemCreate] = []
+        seen_urls: set[str] = set()
+        all_items: list[EvidenceItemCreate] = []
 
         async with httpx.AsyncClient(timeout=10.0) as client:
-            # 1. Search tags=comment (we want user discussions)
-            try:
-                comment_url = "https://hn.algolia.com/api/v1/search"
-                params = {
-                    "query": query,
-                    "tags": "comment",
-                    "hitsPerPage": 40,
-                }
-                response = await client.get(comment_url, params=params)
-                if response.status_code == 200:
-                    data = response.json()
-                    hits = data.get("hits", [])
-                    for hit in hits:
-                        # Extract details
-                        object_id = hit.get("objectID")
-                        comment_text = hit.get("comment_text")
-                        author = hit.get("author")
-                        created_at_raw = hit.get("created_at")
-                        story_id = hit.get("story_id")
+            for query in queries:
+                items = await self._fetch_query(client, query)
+                for item in items:
+                    if item.source_url not in seen_urls:
+                        seen_urls.add(item.source_url)
+                        all_items.append(item)
 
-                        if not object_id or not comment_text:
-                            continue
-
-                        # Noise filtering: require comment to have parent/story info, or author
-                        clean_text = self._clean_html(comment_text)
-                        if len(clean_text) < 30:  # Skip too short comments
-                            continue
-
-                        # Construct a permanent URL to the comment
-                        source_url = f"https://news.ycombinator.com/item?id={object_id}"
-                        posted_at = self._parse_created_at(created_at_raw)
-
-                        evidence_items.append(
-                            EvidenceItemCreate(
-                                source_type=self.source_type,
-                                source_url=source_url,
-                                raw_text=clean_text,
-                                author_handle=author,
-                                posted_at=posted_at,
-                            )
-                        )
-            except Exception as e:
-                logger.error("HN comment collection error for %s: %s", company_name, e)
-
-            # 2. Search tags=story (e.g. Ask HN / Show HN posts)
-            try:
-                story_url = "https://hn.algolia.com/api/v1/search"
-                params = {
-                    "query": query,
-                    "tags": "story",
-                    "hitsPerPage": 20,
-                }
-                response = await client.get(story_url, params=params)
-                if response.status_code == 200:
-                    data = response.json()
-                    hits = data.get("hits", [])
-                    for hit in hits:
-                        object_id = hit.get("objectID")
-                        title = hit.get("title")
-                        story_text = hit.get("story_text")
-                        author = hit.get("author")
-                        created_at_raw = hit.get("created_at")
-                        points = hit.get("points", 0)
-
-                        if not object_id or not title:
-                            continue
-
-                        # We combine title and story text for raw_text
-                        combined_text = title
-                        if story_text:
-                            combined_text += f"\n\n{self._clean_html(story_text)}"
-
-                        # Noise filtering: only keep stories with some traction (e.g., points > 1 or contains text)
-                        if points <= 1 and not story_text:
-                            continue
-
-                        source_url = f"https://news.ycombinator.com/item?id={object_id}"
-                        posted_at = self._parse_created_at(created_at_raw)
-
-                        evidence_items.append(
-                            EvidenceItemCreate(
-                                source_type=self.source_type,
-                                source_url=source_url,
-                                raw_text=combined_text,
-                                author_handle=author,
-                                posted_at=posted_at,
-                            )
-                        )
-            except Exception as e:
-                logger.error("HN story collection error for %s: %s", company_name, e)
-
-        # De-duplicate entries by source_url just in case
-        unique_items = {}
-        for item in evidence_items:
-            unique_items[item.source_url] = item
-
-        return list(unique_items.values())
+        logger.info(
+            "HN collected %d unique items for '%s' (aliases: %s)",
+            len(all_items),
+            company_name,
+            queries,
+        )
+        return all_items

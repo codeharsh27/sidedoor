@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field, HttpUrl, field_validator, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import Company, EvidenceItem, JobPosting, Card, GapCluster, FixabilityFlag, RoleMatch, User, UserProfile
+from app.db.models import Company, Contact, EvidenceItem, JobPosting, Card, GapCluster, FixabilityFlag, OutreachDraft, RoleMatch, User, UserProfile
 from app.db.session import get_db_session
 from app.services.security import validate_url, InvalidURLError, SSRFBlockedError
 from app.services.scan_orchestrator import scan_company
@@ -105,6 +105,17 @@ class JobPostingResponse(BaseModel):
     raw_text: str
     posted_at: Any | None
     is_open: bool
+
+
+class CompanyHealthResponse(BaseModel):
+    company_id: str
+    verdict: str
+    red_flag_count: int
+    green_flag_count: int
+    green_flags: list[str]
+    red_flags: list[str]
+    summary: str
+    health_computed_at: str
 
 
 class ScanResponse(BaseModel):
@@ -556,3 +567,262 @@ async def get_card_prompt(
         "company_name": company_name,
         "prompt_text": prompt_text,
     }
+
+
+# ---------------------------------------------------------------------------
+# Stage 6: Outreach Assembly
+# ---------------------------------------------------------------------------
+
+class ContactResponse(BaseModel):
+    """Schema for a discovered contact at a target company."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str | None
+    title: str
+    source_url: str
+    contact_type: str
+    scraped_at: Any
+
+
+class OutreachDraftResponse(BaseModel):
+    """Schema for the outreach scaffold generated for a card."""
+
+    draft_id: uuid.UUID
+    card_id: uuid.UUID
+    draft_text: str
+    created_at: Any
+
+
+@router.get("/{company_id}/contacts", response_model=list[ContactResponse])
+async def get_contacts(
+    company_id: str, db: AsyncSession = Depends(get_db_session)
+) -> list[Contact]:
+    """Discover and return contacts for a company (GitHub contributors, LinkedIn search URLs, team page)."""
+    try:
+        company_uuid = uuid.UUID(company_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid company_id format",
+        )
+
+    stmt = select(Company).where(Company.id == company_uuid)
+    company = (await db.execute(stmt)).scalar_one_or_none()
+    if not company:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Company with ID {company_id} not found",
+        )
+
+    from app.services.contact_finder import find_contacts
+
+    try:
+        contacts = await find_contacts(company_uuid, db)
+    except Exception as exc:
+        logger.error("Contact discovery failed for %s: %s", company_id, exc)
+        contacts = []
+
+    return contacts
+
+
+@router.post(
+    "/{company_id}/cards/{card_id}/outreach-draft",
+    response_model=OutreachDraftResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_outreach_draft(
+    company_id: str,
+    card_id: str,
+    user_id: str,
+    db: AsyncSession = Depends(get_db_session),
+) -> dict:
+    """Generate and persist the outreach scaffold for a card. Upserts on repeat calls."""
+    try:
+        company_uuid = uuid.UUID(company_id)
+        card_uuid = uuid.UUID(card_id)
+        user_uuid = uuid.UUID(user_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid UUID format",
+        )
+
+    # Verify card belongs to this company and user
+    stmt_card = select(Card).where(
+        Card.id == card_uuid,
+        Card.company_id == company_uuid,
+        Card.user_id == user_uuid,
+    )
+    card = (await db.execute(stmt_card)).scalar_one_or_none()
+    if not card:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Card {card_id} not found for this user and company",
+        )
+
+    from app.services.outreach_drafter import generate_outreach_draft
+
+    try:
+        draft = await generate_outreach_draft(card_uuid, user_uuid, db)
+        await db.commit()
+    except ValueError as val_err:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(val_err),
+        )
+
+    return {
+        "draft_id": draft.id,
+        "card_id": draft.card_id,
+        "draft_text": draft.draft_text,
+        "created_at": draft.created_at,
+    }
+
+
+@router.get(
+    "/{company_id}/cards/{card_id}/outreach-draft",
+    response_model=OutreachDraftResponse,
+)
+async def get_outreach_draft(
+    company_id: str,
+    card_id: str,
+    user_id: str,
+    db: AsyncSession = Depends(get_db_session),
+) -> dict:
+    """Retrieve the outreach draft for a card. Generates one on first call (idempotent)."""
+    try:
+        company_uuid = uuid.UUID(company_id)
+        card_uuid = uuid.UUID(card_id)
+        user_uuid = uuid.UUID(user_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid UUID format",
+        )
+
+    # Verify card belongs to this company and user
+    stmt_card = select(Card).where(
+        Card.id == card_uuid,
+        Card.company_id == company_uuid,
+        Card.user_id == user_uuid,
+    )
+    card = (await db.execute(stmt_card)).scalar_one_or_none()
+    if not card:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Card {card_id} not found for this user and company",
+        )
+
+    # Return existing draft if present
+    stmt_draft = select(OutreachDraft).where(
+        OutreachDraft.card_id == card_uuid,
+        OutreachDraft.user_id == user_uuid,
+    )
+    draft = (await db.execute(stmt_draft)).scalar_one_or_none()
+
+    if not draft:
+        # Generate on demand (idempotent with POST endpoint)
+        from app.services.outreach_drafter import generate_outreach_draft
+
+        try:
+            draft = await generate_outreach_draft(card_uuid, user_uuid, db)
+            await db.commit()
+        except ValueError as val_err:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(val_err),
+            )
+
+    return {
+        "draft_id": draft.id,
+        "card_id": draft.card_id,
+        "draft_text": draft.draft_text,
+        "created_at": draft.created_at,
+    }
+
+
+@router.get("/{company_id}/health", response_model=CompanyHealthResponse)
+async def get_company_health_endpoint(
+    company_id: str,
+    db: AsyncSession = Depends(get_db_session)
+) -> dict:
+    """Evaluate and return health/scam signals for a company."""
+    try:
+        c_uuid = uuid.UUID(company_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid company_id UUID format",
+        )
+
+    from app.services.company_vetter import evaluate_company_health
+
+    try:
+        signal = await evaluate_company_health(c_uuid, db)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e),
+        )
+
+    return {
+        "company_id": str(signal.company_id),
+        "verdict": signal.verdict,
+        "red_flag_count": signal.red_flag_count,
+        "green_flag_count": signal.green_flag_count,
+        "green_flags": signal.green_flags or [],
+        "red_flags": signal.red_flags or [],
+        "summary": signal.summary or "",
+        "health_computed_at": signal.health_computed_at.isoformat(),
+    }
+
+
+class OutreachPlaybookResponse(BaseModel):
+    card_id: str
+    email_draft: str
+    twitter_post: str
+    discord_message: str
+    blog_post_title: str
+    follow_up_email: str
+
+
+@router.get("/{company_id}/cards/{card_id}/outreach-playbook", response_model=OutreachPlaybookResponse)
+async def get_outreach_playbook_endpoint(
+    company_id: str,
+    card_id: str,
+    user_id: str,
+    db: AsyncSession = Depends(get_db_session)
+) -> dict:
+    """Generate 4-channel outreach playbook for a selected opportunity card."""
+    try:
+        card_uuid = uuid.UUID(card_id)
+        user_uuid = uuid.UUID(user_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid UUID format",
+        )
+
+    from app.services.outreach_drafter import generate_outreach_playbook
+
+    try:
+        pb = await generate_outreach_playbook(card_uuid, user_uuid, db)
+        await db.commit()
+    except ValueError as val_err:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(val_err),
+        )
+
+    return {
+        "card_id": card_id,
+        "email_draft": pb["email_draft"],
+        "twitter_post": pb["twitter_post"],
+        "discord_message": pb["discord_message"],
+        "blog_post_title": pb["blog_post_title"],
+        "follow_up_email": pb["follow_up_email"],
+    }
+
+

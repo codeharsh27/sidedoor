@@ -16,6 +16,7 @@ Security:
 
 import logging
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
@@ -71,6 +72,23 @@ class ProfileParseResponse(BaseModel):
     source_type: str = Field(
         description="How the profile was ingested: 'pdf', 'docx', 'url', or 'text'"
     )
+
+
+class UserProfileContract(BaseModel):
+    """UserProfile schema expected by the frontend."""
+    id: str
+    user_id: str
+    raw_resume_text: str
+    parsed_skills: list[str]
+    parsed_domains: list[str]
+    parsed_project_summary: str
+    updated_at: str
+
+
+class ProfileUploadResponse(BaseModel):
+    """Response returned by the resume upload endpoint."""
+    user_id: str
+    profile: UserProfileContract
 
 
 class ProfileParseTextRequest(BaseModel):
@@ -301,3 +319,121 @@ async def parse_portfolio_url(
             raise HTTPException(status_code=422, detail=error_msg)
 
     return await _run_parse_pipeline(extraction, uid, session, parser)
+
+
+@router.post("/upload", response_model=ProfileUploadResponse)
+async def upload_profile(
+    user_id: str | None = Form(None),
+    file: UploadFile | None = File(None),
+    raw_text: str | None = Form(None),
+    session: AsyncSession = Depends(get_db_session),
+    parser: GeminiResumeParser = Depends(get_resume_parser),
+) -> ProfileUploadResponse:
+    """
+    Ingest a user profile by file upload or raw text.
+    Creates a new user if user_id is not provided or not found.
+    """
+    uid = None
+    if user_id:
+        try:
+            uid = uuid.UUID(user_id)
+        except ValueError:
+            pass
+
+    # Ensure User exists, or create new one
+    user = None
+    if uid:
+        user_result = await session.execute(select(User).where(User.id == uid))
+        user = user_result.scalar_one_or_none()
+
+    if not user:
+        user = User(email=f"anonymous_{uuid.uuid4().hex[:8]}@sidedoor.app")
+        session.add(user)
+        await session.flush()
+        uid = user.id
+
+    # Extraction step
+    if file:
+        file_bytes = await file.read()
+        try:
+            extraction = extract_from_file(
+                file_bytes=file_bytes,
+                content_type=file.content_type,
+                filename=file.filename,
+            )
+        except DocumentExtractionError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+    elif raw_text:
+        try:
+            extraction = extract_from_text(raw_text)
+        except DocumentExtractionError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail="Either 'file' or 'raw_text' must be provided.",
+        )
+
+    # Core pipeline: parser, embedding, persistence
+    raw_txt = extraction.raw_text
+    source_type = extraction.source_type
+
+    try:
+        parsed: ProfileData = await parser.parse_resume(raw_txt)
+    except ResumeParseError as e:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Resume parsing failed: {e}",
+        )
+
+    embedder = get_embedder(settings.embedding_model)
+    embedding = embedder.embed_profile(parsed)
+
+    profile_result = await session.execute(
+        select(UserProfile).where(UserProfile.user_id == uid)
+    )
+    existing_profile = profile_result.scalar_one_or_none()
+
+    notable_projects_data = [p.model_dump() for p in parsed.notable_projects]
+
+    if existing_profile:
+        existing_profile.raw_resume_text = raw_txt
+        existing_profile.parsed_skills = parsed.skills
+        existing_profile.parsed_domains = parsed.domains
+        existing_profile.parsed_project_summary = parsed.project_summary
+        existing_profile.notable_projects = notable_projects_data
+        existing_profile.source_type = source_type
+        existing_profile.embedding_vector = embedding
+        profile = existing_profile
+        logger.info("Updated profile for user %s via upload (source: %s)", uid, source_type)
+    else:
+        new_profile = UserProfile(
+            user_id=uid,
+            raw_resume_text=raw_txt,
+            parsed_skills=parsed.skills,
+            parsed_domains=parsed.domains,
+            parsed_project_summary=parsed.project_summary,
+            notable_projects=notable_projects_data,
+            source_type=source_type,
+            embedding_vector=embedding,
+        )
+        session.add(new_profile)
+        profile = new_profile
+        logger.info("Created profile for user %s via upload (source: %s)", uid, source_type)
+
+    await session.commit()
+    await session.refresh(profile)
+
+    return ProfileUploadResponse(
+        user_id=str(uid),
+        profile=UserProfileContract(
+            id=str(profile.id),
+            user_id=str(profile.user_id),
+            raw_resume_text=profile.raw_resume_text,
+            parsed_skills=profile.parsed_skills,
+            parsed_domains=profile.parsed_domains,
+            parsed_project_summary=profile.parsed_project_summary,
+            updated_at=profile.updated_at.isoformat() if profile.updated_at else datetime.now(timezone.utc).isoformat(),
+        ),
+    )
+

@@ -109,20 +109,7 @@ def _cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
 def _extract_label(texts: list[str], top_n: int = 5) -> str:
     """
     Extract a short cluster label using TF-IDF-style term frequency counting.
-
-    Tokenises all member texts, filters stopwords and short tokens,
-    and returns the top_n most-frequent content words joined as a phrase.
-
-    This is deterministic and produces the same output for the same input
-    every time — no LLM, no randomness.
-
-    Args:
-        texts: List of raw_text strings from member evidence items.
-        top_n: Number of top terms to include in the label.
-
-    Returns:
-        A short label string, e.g. "authentication slow login timeout".
-        Falls back to "general feedback" if no content words are found.
+    Formats terms into a clean Product Engineering Gap title.
     """
     token_counts: Counter = Counter()
     for text in texts:
@@ -135,10 +122,13 @@ def _extract_label(texts: list[str], top_n: int = 5) -> str:
                 token_counts[tok] += 1
 
     if not token_counts:
-        return "general feedback"
+        return "Developer Workflow & Feature Request"
 
     top_terms = [term for term, _ in token_counts.most_common(top_n)]
-    return " ".join(top_terms)
+    phrase = " ".join(top_terms)
+    
+    # Capitalize and format nicely
+    return phrase.title() + " Opportunity"
 
 
 # ---------------------------------------------------------------------------

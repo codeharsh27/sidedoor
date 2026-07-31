@@ -1,0 +1,335 @@
+"""
+Stage 6 Outreach Drafter Service — zero-LLM scaffold template generation.
+
+Generates a ready-to-adapt outreach message scaffold for a given (card, user) pair.
+
+Design rules (non-negotiable):
+  - Zero LLM calls. All text is produced by string substitution into fixed templates.
+  - [TODO:] placeholders are NEVER pre-filled by this service. They are intentionally
+    left for the user to complete — this upholds the "never complete the job for the
+    user" principle from PRD §9 and AGENTS.md.
+  - Every evidence source that appears in the draft is a real, clickable URL from
+    the evidence_items table.
+  - Upsert semantics: calling this service twice for the same (card_id, user_id) updates
+    updated_at and refreshes draft_text, but returns the same draft_id.
+
+Template variants:
+  - Variant A ("I built something") — used when card.status == "selected".
+    Includes placeholders for a live demo link and a Loom walkthrough URL.
+  - Variant B ("I spotted something") — used for all other card statuses.
+    Focuses on the gap observation and a proposed investigation.
+"""
+
+import logging
+import uuid
+from datetime import datetime, timezone
+
+from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db.models import (
+    Card,
+    Company,
+    EvidenceItem,
+    GapCluster,
+    JobPosting,
+    OutreachDraft,
+    RoleMatch,
+    UserProfile,
+)
+from app.services.prompt_generator import get_matching_skill_and_domain
+
+logger = logging.getLogger(__name__)
+
+# -----------------------------------------------------------------
+# Template definitions
+# -----------------------------------------------------------------
+# IMPORTANT: Do NOT pre-fill any [TODO:] section. They are deliberate.
+
+_TEMPLATE_A = """\
+Subject: [TODO: fill in — keep it \u226460 chars]
+
+Hi [TODO: contact name or "team"],
+
+I\u2019ve been using {company_name} and noticed that \u201c{cluster_label}\u201d keeps coming up as a pain point in the community (e.g. \u201c{top_evidence_quote_truncated}\u201d).
+
+I built a small proof-of-concept that addresses this:
+  [TODO: paste your live demo / GitHub link here]
+
+Here\u2019s a 2-minute walkthrough:
+  [TODO: paste Loom URL here]
+
+I\u2019m targeting {role_title} roles and would love 15 minutes to show you what I learned building this. Happy to elaborate on any technical detail.
+
+[TODO: your name]
+[TODO: your GitHub / portfolio link]
+
+---
+Evidence sources used in research:
+{evidence_source_list}"""
+
+_TEMPLATE_B = """\
+Subject: [TODO: fill in — keep it ≤60 chars]
+
+Hi [TODO: contact name or "team"],
+
+I’ve been researching {company_name} seriously — looking at where users are running into friction. One theme keeps appearing: “{cluster_label}.”
+
+I’m planning to build a small proof-of-concept this week to demonstrate a possible fix. Before I do, I’d love a 10-minute call to validate I’m solving the right thing.
+
+I’m targeting {role_title} roles and have relevant experience in {top_matching_skill}.
+
+[TODO: your name]
+[TODO: your GitHub / portfolio link]
+
+---
+Evidence sources used in research:
+{evidence_source_list}"""
+
+_TWITTER_TEMPLATE = """\
+Built a small proof-of-concept for @{company_handle} addressing '{cluster_label}'! 🛠️
+
+Observed this friction point in community discussions (e.g. "{top_evidence_quote_truncated}").
+
+Live Demo: [TODO: paste demo URL]
+GitHub: [TODO: paste repo link]
+
+#ProductEngineering #{top_matching_skill_slug} #BuildInPublic"""
+
+_DISCORD_TEMPLATE = """\
+Hey team! 👋 I've been using {company_name} and noticed a recurring feedback theme around **{cluster_label}**.
+
+I put together a quick open-source demo using {top_matching_skill} showing how this could be streamlined:
+👉 Demo: [TODO: paste live demo link]
+👉 Code: [TODO: paste github link]
+
+Would love any feedback from the team or community!"""
+
+_BLOG_TITLE_TEMPLATE = """What I Learned Building a Solution for {company_name}'s "{cluster_label}" Gap"""
+
+_FOLLOW_UP_TEMPLATE = """\
+Subject: Re: [TODO: original subject]
+
+Hi [TODO: contact name],
+
+Following up on my message below — live demo is still up: [TODO: paste demo link]
+
+I'm targeting {role_title} roles and would love 10 minutes to share my learnings building this for {company_name}.
+
+Best,
+[TODO: your name]"""
+
+
+# -----------------------------------------------------------------
+# Public API
+# -----------------------------------------------------------------
+async def generate_outreach_draft(
+    card_id: uuid.UUID,
+    user_id: uuid.UUID,
+    db: AsyncSession,
+) -> OutreachDraft:
+    """
+    Generate (or regenerate) the outreach draft scaffold for a card.
+
+    The returned OutreachDraft is upserted — calling this twice with the same
+    (card_id, user_id) returns the same draft_id with a refreshed updated_at.
+
+    Args:
+        card_id: UUID of the selected card.
+        user_id: UUID of the requesting user.
+        db: Active async SQLAlchemy session.
+
+    Returns:
+        The persisted OutreachDraft ORM object.
+
+    Raises:
+        ValueError: If the card does not exist / does not belong to user_id,
+                    or if the user profile is missing.
+    """
+    # 1. Load card — verify ownership
+    stmt_card = select(Card).where(Card.id == card_id)
+    card = (await db.execute(stmt_card)).scalar_one_or_none()
+    if not card:
+        raise ValueError(f"Card {card_id} not found")
+    if card.user_id != user_id:
+        raise ValueError(f"Card {card_id} does not belong to user {user_id}")
+
+    # 2. Load UserProfile
+    stmt_profile = select(UserProfile).where(UserProfile.user_id == user_id)
+    profile = (await db.execute(stmt_profile)).scalar_one_or_none()
+    if not profile:
+        raise ValueError(f"User profile for user {user_id} not found")
+
+    # 3. Load GapCluster
+    stmt_cluster = select(GapCluster).where(GapCluster.id == card.gap_cluster_id)
+    cluster = (await db.execute(stmt_cluster)).scalar_one_or_none()
+    if not cluster:
+        raise ValueError(f"Gap cluster {card.gap_cluster_id} not found")
+
+    # 4. Load Company
+    stmt_company = select(Company.name).where(Company.id == card.company_id)
+    company_name = (await db.execute(stmt_company)).scalar_one_or_none()
+    if not company_name:
+        raise ValueError(f"Company {card.company_id} not found")
+
+    # 5. Load top 3 evidence items
+    evidence_items: list[EvidenceItem] = []
+    if cluster.evidence_item_ids:
+        stmt_ev = select(EvidenceItem).where(
+            EvidenceItem.id.in_(cluster.evidence_item_ids)
+        ).limit(3)
+        evidence_items = list((await db.execute(stmt_ev)).scalars().all())
+
+    # 6. Determine top_evidence_quote (first item, truncated)
+    top_evidence_quote = ""
+    if evidence_items:
+        raw = evidence_items[0].raw_text
+        top_evidence_quote = raw[:120] + ("\u2026" if len(raw) > 120 else "")
+
+    # 7. Build evidence source bullet list (real, clickable URLs)
+    evidence_source_list = "\n".join(
+        f"- {item.source_url}" for item in evidence_items
+    )
+    if not evidence_source_list:
+        evidence_source_list = "- (no evidence sources available)"
+
+    # 8. Resolve best role title
+    role_title = "engineering"
+    stmt_role = (
+        select(RoleMatch)
+        .where(RoleMatch.gap_cluster_id == cluster.id)
+        .order_by(RoleMatch.match_score.desc())
+        .limit(1)
+    )
+    role_match = (await db.execute(stmt_role)).scalar_one_or_none()
+    if role_match:
+        stmt_job = select(JobPosting.title).where(
+            JobPosting.id == role_match.job_posting_id
+        )
+        job_title = (await db.execute(stmt_job)).scalar_one_or_none()
+        if job_title:
+            role_title = job_title
+
+    # 9. Resolve top matching skill via shared helper (no duplication)
+    evidence_text = " ".join(item.raw_text for item in evidence_items)
+    top_matching_skill, _ = get_matching_skill_and_domain(
+        profile.parsed_skills,
+        profile.parsed_domains,
+        evidence_text or cluster.label,
+        cluster.label,
+    )
+
+    # 10. Choose template variant
+    template = _TEMPLATE_A if card.status == "selected" else _TEMPLATE_B
+
+    # 11. Fill template variables
+    draft_text = template.format(
+        company_name=company_name,
+        cluster_label=cluster.label,
+        top_evidence_quote_truncated=top_evidence_quote,
+        role_title=role_title,
+        top_matching_skill=top_matching_skill,
+        evidence_source_list=evidence_source_list,
+    )
+
+    # 12. Upsert outreach_drafts row
+    now = datetime.now(timezone.utc)
+    existing_draft_id: uuid.UUID | None = None
+
+    stmt_existing = select(OutreachDraft).where(
+        OutreachDraft.card_id == card_id,
+        OutreachDraft.user_id == user_id,
+    )
+    existing = (await db.execute(stmt_existing)).scalar_one_or_none()
+
+    if existing:
+        existing.draft_text = draft_text
+        existing.updated_at = now
+        db.add(existing)
+        await db.flush()
+        return existing
+
+    # New row
+    new_draft = OutreachDraft(
+        card_id=card_id,
+        user_id=user_id,
+        draft_text=draft_text,
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(new_draft)
+    await db.flush()
+    return new_draft
+
+
+async def generate_outreach_playbook(
+    card_id: uuid.UUID,
+    user_id: uuid.UUID,
+    db: AsyncSession,
+) -> dict[str, str]:
+    """
+    Generate a full 4-channel outreach playbook (Email, Twitter, Discord, Blog, Follow-up).
+    """
+    # 1. Get primary email draft ORM object
+    draft_obj = await generate_outreach_draft(card_id, user_id, db)
+
+    # 2. Fetch context details for multi-channel templates
+    stmt_card = select(Card).where(Card.id == card_id)
+    card = (await db.execute(stmt_card)).scalar_one_or_none()
+
+    stmt_cluster = select(GapCluster).where(GapCluster.id == card.gap_cluster_id)
+    cluster = (await db.execute(stmt_cluster)).scalar_one_or_none()
+
+    stmt_company = select(Company.name).where(Company.id == card.company_id)
+    company_name = (await db.execute(stmt_company)).scalar_one_or_none() or "Company"
+
+    stmt_profile = select(UserProfile).where(UserProfile.user_id == user_id)
+    profile = (await db.execute(stmt_profile)).scalar_one_or_none()
+
+    # Evidence items for quote
+    evidence_items = []
+    if cluster and cluster.evidence_item_ids:
+        stmt_ev = select(EvidenceItem).where(EvidenceItem.id.in_(cluster.evidence_item_ids)).limit(1)
+        evidence_items = list((await db.execute(stmt_ev)).scalars().all())
+
+    top_evidence_quote = ""
+    if evidence_items:
+        raw = evidence_items[0].raw_text
+        top_evidence_quote = raw[:80] + ("…" if len(raw) > 80 else "")
+
+    top_skill = profile.parsed_skills[0] if (profile and profile.parsed_skills) else "Software"
+    role_title = "Product Engineer"
+    company_handle = company_name.lower().replace(" ", "")
+
+    twitter_post = _TWITTER_TEMPLATE.format(
+        company_handle=company_handle,
+        cluster_label=cluster.label if cluster else "User friction point",
+        top_evidence_quote_truncated=top_evidence_quote,
+        top_matching_skill_slug=top_skill.replace(" ", ""),
+    )
+
+    discord_message = _DISCORD_TEMPLATE.format(
+        company_name=company_name,
+        cluster_label=cluster.label if cluster else "User friction point",
+        top_matching_skill=top_skill,
+    )
+
+    blog_title = _BLOG_TITLE_TEMPLATE.format(
+        company_name=company_name,
+        cluster_label=cluster.label if cluster else "User friction point",
+    )
+
+    follow_up = _FOLLOW_UP_TEMPLATE.format(
+        company_name=company_name,
+        role_title=role_title,
+    )
+
+    return {
+        "email_draft": draft_obj.draft_text,
+        "twitter_post": twitter_post,
+        "discord_message": discord_message,
+        "blog_post_title": blog_title,
+        "follow_up_email": follow_up,
+    }
+

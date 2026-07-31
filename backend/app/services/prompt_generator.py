@@ -21,29 +21,46 @@ from app.db.models import Company, EvidenceItem, GapCluster, JobPosting, RoleMat
 
 logger = logging.getLogger(__name__)
 
-# Handoff prompt template
-_MEMENTO_PROMPT_TEMPLATE = """You are an expert senior software engineer and build mentor. A developer is building a small MVP/scaffold to address a real problem identified at {company_name}.
+# Handoff prompt template — Phase 4 upgraded
+_MEMENTO_PROMPT_TEMPLATE = """You are an expert senior software engineer and build mentor. A developer is building a targeted MVP to demonstrate a solution for a real problem identified at {company_name}.
 
 Target Company: {company_name}
 Matching Role: {role_title}
 
-### The Problem/Gap:
+### 🎯 The Problem / Gap:
 - Topic: {cluster_label}
-- Evidence from users/community:
+- Community Evidence:
 {evidence_quotes}
 
-### Developer Profile:
+### 👨‍💻 Developer Profile:
 - Core Skills: {user_skills}
-- Relevant Skill to target: {top_matching_skill}
+- Primary Matching Tech: {top_matching_skill}
 - Ingested Resume/Portfolio Summary: {user_summary}
 
-### Your Task:
-Create a detailed 2-3 hour implementation roadmap and scaffolding plan for a small MVP that demonstrates a solution to this problem.
+---
 
-Follow these strict rules:
-1. **Scaffold, don't finish**: Suggest folder layout, model schemas, and endpoint signatures, but do NOT write the core business logic. Use comments like "# TODO: implement auth logic using {top_matching_skill}" so the developer does the actual thinking.
-2. **Match the environment**: Keep the tech stack focused on the developer's core skills ({top_matching_skill}).
-3. **Verification**: Outline 3 concrete CLI commands or tests the developer can run to verify their build works.
+### ⏱️ Time Budget & Scope:
+- **Realistic Time Budget:** {estimated_hours} (Strict limit — do NOT over-engineer!)
+- **Target Stack:** Built using {top_matching_skill} + deployable on Vercel / Railway / Render (free tier, zero cost).
+
+#### ✅ What to Build (In Scope):
+- A minimal, working proof-of-concept addressing the core gap ({cluster_label}).
+- Clean folder structure, type-safe API schema, and a single core feature route.
+- A single-page interactive UI or CLI tool demonstrating the fix.
+
+#### ❌ What NOT to Build (Out of Scope):
+- Complete authentication or complex RBAC systems (use mock user header/token).
+- Multi-region database replication or custom billing integrations.
+- Pixel-perfect design system (use Tailwind default components or simple CLI formatting).
+
+---
+
+### 🚀 Presentation & Verification Plan:
+1. **Scaffold, don't finish**: Provide folder structure, DB schemas, and API signatures. Use comments like `# TODO: implement {cluster_label} logic using {top_matching_skill}` so the developer writes the core business code.
+2. **Deploy Live**: Deploy a working preview link (Vercel / Railway).
+3. **Record 2-Minute Loom**: Show the live demo running with sample data.
+4. **CLI Verification**:
+{verification_commands}
 """
 
 
@@ -181,7 +198,22 @@ async def generate_handoff_prompt(
         cluster.label,
     )
 
-    # 7. Render template
+    # 7. Compute deterministic time budget & verification commands
+    ev_count = cluster.evidence_count or len(cluster.evidence_item_ids or [])
+    if ev_count <= 3:
+        estimated_hours = "4-6 hours"
+    elif ev_count <= 8:
+        estimated_hours = "6-10 hours"
+    else:
+        estimated_hours = "8-12 hours"
+
+    verif_cmds = (
+        f"   1. `npm run dev` / `python main.py` (Local server startup)\n"
+        f"   2. `curl -X POST http://localhost:3000/api/{cluster.label.replace(' ', '-')} -H 'Content-Type: application/json' -d '{{\"test\": true}}'`\n"
+        f"   3. `npm test` / `pytest` (Run 1 unit test verifying {top_matching_skill} behavior)"
+    )
+
+    # 8. Render template
     prompt = _MEMENTO_PROMPT_TEMPLATE.format(
         company_name=company_name,
         role_title=role_title,
@@ -191,6 +223,9 @@ async def generate_handoff_prompt(
         top_matching_skill=top_matching_skill,
         user_summary=profile.parsed_project_summary or "No summary available.",
         gap_domain=gap_domain,
+        estimated_hours=estimated_hours,
+        verification_commands=verif_cmds,
     )
 
     return prompt
+

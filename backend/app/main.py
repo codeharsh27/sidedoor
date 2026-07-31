@@ -28,11 +28,22 @@ async def lifespan(app: FastAPI):
     get_embedder(settings.embedding_model)
     logger.info("Embedding model ready.")
 
+    # Load Phase 2 seed companies into database
+    try:
+        from app.db.session import async_session_factory
+        from app.services.seed_loader import load_seed_companies
+        async with async_session_factory() as session:
+            await load_seed_companies(session)
+    except Exception as e:
+        logger.error("Error loading seed companies on startup: %s", e)
+
     yield
 
     # Shutdown: nothing to clean up for now
     logger.info("Shutting down.")
 
+
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(
     title="SideDoor Backend",
@@ -42,6 +53,14 @@ app = FastAPI(
     ),
     version="0.1.0",
     lifespan=lifespan,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow all origins for dev/testing ease
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 app.include_router(api_router)

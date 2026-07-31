@@ -9,7 +9,7 @@ from typing import Sequence, Union
 
 import sqlalchemy as sa
 from alembic import op
-from pgvector.sqlalchemy import Vector
+# from pgvector.sqlalchemy import Vector
 
 # revision identifiers
 revision: str = "0004"
@@ -20,7 +20,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     # Ensure pgvector extension is available (idempotent)
-    op.execute("CREATE EXTENSION IF NOT EXISTS vector")
+    # op.execute("CREATE EXTENSION IF NOT EXISTS vector")
 
     op.create_table(
         "gap_clusters",
@@ -33,13 +33,13 @@ def upgrade() -> None:
         sa.Column("company_id", sa.UUID(), nullable=False),
         sa.Column("label", sa.Text(), nullable=False),
         # 384-dim centroid vector — same dimension as all-MiniLM-L6-v2
-        sa.Column("embedding_vector", Vector(384), nullable=False),
+        sa.Column("embedding_vector", sa.ARRAY(sa.Float()), nullable=False),
         # PostgreSQL UUID[] array — list of EvidenceItem IDs in this cluster
         sa.Column(
             "evidence_item_ids",
             sa.ARRAY(sa.UUID()),
             nullable=False,
-            server_default="'{}'",
+            server_default=sa.text("'{}'::uuid[]"),
         ),
         sa.Column(
             "evidence_count",

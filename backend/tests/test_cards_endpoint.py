@@ -306,3 +306,152 @@ class TestCardsEndpoints:
         )
         assert response.status_code == 404
         assert "not found" in response.json()["detail"]
+
+    def test_get_contacts_success(self, client, mock_db_session):
+        """Should return contacts list for a company."""
+        company_id = uuid.uuid4()
+        company = Company(
+            id=company_id,
+            name="GitCo",
+            url="https://git.com",
+            github_repo_url="https://github.com/git/co"
+        )
+        res_comp = MagicMock()
+        res_comp.scalar_one_or_none.return_value = company
+
+        from app.db.models import Contact
+        contacts = [
+            Contact(
+                id=uuid.uuid4(),
+                company_id=company_id,
+                name="John Doe",
+                title="Engineering Manager",
+                source_url="https://linkedin.com/search/...",
+                contact_type="linkedin_search",
+                scraped_at=datetime.now(timezone.utc)
+            )
+        ]
+
+        with patch("app.services.contact_finder.find_contacts") as mock_find:
+            mock_find.return_value = contacts
+            mock_db_session.execute.return_value = res_comp
+
+            response = client.get(f"/api/v1/company/{company_id}/contacts")
+            assert response.status_code == 200
+            data = response.json()
+            assert len(data) == 1
+            assert data[0]["name"] == "John Doe"
+            assert data[0]["title"] == "Engineering Manager"
+            assert data[0]["contact_type"] == "linkedin_search"
+            mock_find.assert_called_once_with(company_id, mock_db_session)
+
+    def test_get_contacts_not_found(self, client, mock_db_session):
+        """Should return 404 if company doesn't exist."""
+        company_id = uuid.uuid4()
+        res_comp = MagicMock()
+        res_comp.scalar_one_or_none.return_value = None
+        mock_db_session.execute.return_value = res_comp
+
+        response = client.get(f"/api/v1/company/{company_id}/contacts")
+        assert response.status_code == 404
+
+    def test_post_outreach_draft_success(self, client, mock_db_session):
+        """Should successfully create a new outreach draft."""
+        company_id = uuid.uuid4()
+        card_id = uuid.uuid4()
+        user_id = uuid.uuid4()
+
+        card = Card(id=card_id, company_id=company_id, user_id=user_id, status="selected")
+        res_card = MagicMock()
+        res_card.scalar_one_or_none.return_value = card
+        mock_db_session.execute.return_value = res_card
+
+        from app.db.models import OutreachDraft
+        draft = OutreachDraft(
+            id=uuid.uuid4(),
+            card_id=card_id,
+            user_id=user_id,
+            draft_text="Scaffold Text",
+            created_at=datetime.now(timezone.utc)
+        )
+
+        with patch("app.services.outreach_drafter.generate_outreach_draft") as mock_gen:
+            mock_gen.return_value = draft
+
+            response = client.post(
+                f"/api/v1/company/{company_id}/cards/{card_id}/outreach-draft?user_id={user_id}"
+            )
+            assert response.status_code == 201
+            data = response.json()
+            assert data["draft_id"] == str(draft.id)
+            assert data["draft_text"] == "Scaffold Text"
+
+    def test_get_outreach_draft_existing(self, client, mock_db_session):
+        """Should return existing outreach draft without recreating."""
+        company_id = uuid.uuid4()
+        card_id = uuid.uuid4()
+        user_id = uuid.uuid4()
+
+        card = Card(id=card_id, company_id=company_id, user_id=user_id, status="selected")
+        res_card = MagicMock()
+        res_card.scalar_one_or_none.return_value = card
+
+        from app.db.models import OutreachDraft
+        draft = OutreachDraft(
+            id=uuid.uuid4(),
+            card_id=card_id,
+            user_id=user_id,
+            draft_text="Scaffold Text",
+            created_at=datetime.now(timezone.utc)
+        )
+        res_draft = MagicMock()
+        res_draft.scalar_one_or_none.return_value = draft
+
+        mock_db_session.execute.side_effect = [res_card, res_draft]
+
+        with patch("app.services.outreach_drafter.generate_outreach_draft") as mock_gen:
+            response = client.get(
+                f"/api/v1/company/{company_id}/cards/{card_id}/outreach-draft?user_id={user_id}"
+            )
+            assert response.status_code == 200
+            data = response.json()
+            assert data["draft_id"] == str(draft.id)
+            assert data["draft_text"] == "Scaffold Text"
+            mock_gen.assert_not_called()
+
+    def test_get_outreach_draft_on_demand(self, client, mock_db_session):
+        """Should generate draft on demand if none exists yet."""
+        company_id = uuid.uuid4()
+        card_id = uuid.uuid4()
+        user_id = uuid.uuid4()
+
+        card = Card(id=card_id, company_id=company_id, user_id=user_id, status="selected")
+        res_card = MagicMock()
+        res_card.scalar_one_or_none.return_value = card
+
+        res_draft = MagicMock()
+        res_draft.scalar_one_or_none.return_value = None
+
+        mock_db_session.execute.side_effect = [res_card, res_draft]
+
+        from app.db.models import OutreachDraft
+        new_draft = OutreachDraft(
+            id=uuid.uuid4(),
+            card_id=card_id,
+            user_id=user_id,
+            draft_text="New Scaffold Text",
+            created_at=datetime.now(timezone.utc)
+        )
+
+        with patch("app.services.outreach_drafter.generate_outreach_draft") as mock_gen:
+            mock_gen.return_value = new_draft
+
+            response = client.get(
+                f"/api/v1/company/{company_id}/cards/{card_id}/outreach-draft?user_id={user_id}"
+            )
+            assert response.status_code == 200
+            data = response.json()
+            assert data["draft_id"] == str(new_draft.id)
+            assert data["draft_text"] == "New Scaffold Text"
+            mock_gen.assert_called_once_with(card_id, user_id, mock_db_session)
+

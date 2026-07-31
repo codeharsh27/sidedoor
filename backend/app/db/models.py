@@ -2,15 +2,15 @@
 SQLAlchemy models for SideDoor.
 
 Schema source: ARCHITECTURE.md §2.
-Only tables needed for stage 1 (resume parsing) are defined here.
-Later stages will add their own tables to this file as they're built.
+Tables are added in stage order; do not introduce new tables without
+checking ARCHITECTURE.md first.
 """
 
 import uuid
 from datetime import datetime, timezone
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import DateTime, ForeignKey, Text, text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Text, text, UniqueConstraint
 from sqlalchemy import Float, Integer
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -40,6 +40,8 @@ class User(Base):
         server_default=text("gen_random_uuid()"),
     )
     email: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
+    name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    password_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
@@ -95,7 +97,7 @@ class UserProfile(Base):
     source_type: Mapped[str] = mapped_column(
         Text, nullable=False, default="text"
     )  # "pdf" | "docx" | "url" | "text" — how the profile was ingested
-    embedding_vector = mapped_column(Vector(384), nullable=False)
+    embedding_vector = mapped_column(ARRAY(Float), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
@@ -132,6 +134,20 @@ class Company(Base):
         Text, nullable=False, default="pending"
     )  # "pending" | "scanning" | "done" | "insufficient_signal"
 
+    # Phase 2: VC Feed Metadata
+    funding_stage: Mapped[str | None] = mapped_column(Text, nullable=True)  # "seed" | "series_a" | "series_b" | "growth"
+    investor_tags: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), nullable=False, default=list, server_default=text("'{}'")
+    )  # e.g. ["yc", "a16z", "peak_xv", "blume", "accel_india"]
+    employee_count_approx: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    tech_stack_tags: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), nullable=False, default=list, server_default=text("'{}'")
+    )  # e.g. ["typescript", "python", "go"]
+    is_seed_list: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    seed_list_source: Mapped[str | None] = mapped_column(Text, nullable=True)  # e.g. "yc_w24", "a16z_portfolio"
+
     # Relationships
     evidence_items: Mapped[list["EvidenceItem"]] = relationship(
         back_populates="company", cascade="all, delete-orphan", passive_deletes=True
@@ -147,6 +163,12 @@ class Company(Base):
     )
     cards: Mapped[list["Card"]] = relationship(
         back_populates="company", cascade="all, delete-orphan", passive_deletes=True
+    )
+    contacts: Mapped[list["Contact"]] = relationship(
+        back_populates="company", cascade="all, delete-orphan", passive_deletes=True
+    )
+    health_signal: Mapped["CompanyHealthSignal | None"] = relationship(
+        back_populates="company", uselist=False, cascade="all, delete-orphan", passive_deletes=True
     )
 
 
@@ -250,7 +272,7 @@ class GapCluster(Base):
         nullable=False,
     )
     label: Mapped[str] = mapped_column(Text, nullable=False)
-    embedding_vector = mapped_column(Vector(384), nullable=False)
+    embedding_vector = mapped_column(ARRAY(Float), nullable=False)
     evidence_item_ids: Mapped[list] = mapped_column(
         ARRAY(UUID(as_uuid=True)), nullable=False, default=list
     )
@@ -437,3 +459,239 @@ class Card(Base):
     company: Mapped["Company"] = relationship(back_populates="cards")
     fixability_flag: Mapped["FixabilityFlag"] = relationship(back_populates="cards")
     role_match: Mapped["RoleMatch"] = relationship(back_populates="cards")
+    outreach_drafts: Mapped[list["OutreachDraft"]] = relationship(
+        back_populates="card", cascade="all, delete-orphan", passive_deletes=True
+    )
+
+
+class Contact(Base):
+    """
+    contacts table — ARCHITECTURE.md §2.
+
+    One row per discovered contact at a company. Source types:
+      - "github_profile": a public GitHub contributor profile URL
+      - "linkedin_search": a generated LinkedIn search URL (never fetched)
+      - "team_page": extracted from the company's own public /team or /about page
+
+    Invariant: source_url is ALWAYS set. No contact row may exist without one.
+    """
+
+    __tablename__ = "contacts"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    source_url: Mapped[str] = mapped_column(Text, nullable=False)
+    contact_type: Mapped[str] = mapped_column(
+        Text, nullable=False
+    )  # "github_profile" | "linkedin_search" | "team_page"
+    scraped_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        server_default=text("now()"),
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "company_id", "source_url", name="uq_contacts_company_source_url"
+        ),
+    )
+
+    # Relationships
+    company: Mapped["Company"] = relationship(back_populates="contacts")
+
+
+class OutreachDraft(Base):
+    """
+    outreach_drafts table — Stage 6.
+
+    Persists the scaffold outreach message for a (card, user) pair.
+    The draft is a template with [TODO:] markers the user must fill in.
+    Upserted on repeated calls — never creates duplicate rows.
+    """
+
+    __tablename__ = "outreach_drafts"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    card_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cards.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    draft_text: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        server_default=text("now()"),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        server_default=text("now()"),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "card_id", "user_id", name="uq_outreach_drafts_card_user"
+        ),
+    )
+
+    # Relationships
+    card: Mapped["Card"] = relationship(back_populates="outreach_drafts")
+    user: Mapped["User"] = relationship()
+
+
+class CompanyHealthSignal(Base):
+    """
+    company_health_signals table — Phase 3 Scam & Health Vetting.
+    """
+
+    __tablename__ = "company_health_signals"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("companies.id", ondelete="CASCADE"),
+        unique=True,
+        nullable=False,
+    )
+    employee_count_linkedin: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    funding_disclosed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
+    funding_amount_usd: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    funding_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    lead_investor: Mapped[str | None] = mapped_column(Text, nullable=True)
+    glassdoor_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    has_salary_in_job_postings: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
+    red_flag_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    green_flag_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    verdict: Mapped[str] = mapped_column(Text, nullable=False, default="limited_info")  # "verified_safe" | "high_risk" | "limited_info"
+    green_flags: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list, server_default=text("'{}'"))
+    red_flags: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list, server_default=text("'{}'"))
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    health_computed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        server_default=text("now()"),
+    )
+
+    # Relationships
+    company: Mapped["Company"] = relationship(back_populates="health_signal")
+
+
+class Application(Base):
+    """
+    applications table — Phase 5 Application Tracker.
+    """
+
+    __tablename__ = "applications"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    card_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cards.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    status: Mapped[str] = mapped_column(
+        Text, nullable=False, default="researching"
+    )  # "researching" | "building" | "reached_out" | "replied" | "interviewing" | "closed"
+    demo_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    outreach_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_reply_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        server_default=text("now()"),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        server_default=text("now()"),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "company_id", name="uq_user_company_application"),
+    )
+
+    # Relationships
+    company: Mapped["Company"] = relationship()
+    card: Mapped["Card | None"] = relationship()
+    events: Mapped[list["ApplicationEvent"]] = relationship(
+        back_populates="application", cascade="all, delete-orphan"
+    )
+
+
+class ApplicationEvent(Base):
+    """
+    application_events table — tracks timeline events for applications.
+    """
+
+    __tablename__ = "application_events"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    application_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("applications.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    event_type: Mapped[str] = mapped_column(
+        Text, nullable=False
+    )  # "status_changed" | "demo_deployed" | "outreach_sent" | "reply_received" | "follow_up_sent"
+    event_data: Mapped[dict | None] = mapped_column(JSONB, nullable=True, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        server_default=text("now()"),
+    )
+
+    # Relationships
+    application: Mapped["Application"] = relationship(back_populates="events")
+
+

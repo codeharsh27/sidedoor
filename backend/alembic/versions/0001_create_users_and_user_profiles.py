@@ -9,7 +9,7 @@ from typing import Sequence, Union
 
 import sqlalchemy as sa
 from alembic import op
-from pgvector.sqlalchemy import Vector
+# from pgvector.sqlalchemy import Vector
 
 # revision identifiers
 revision: str = "0001"
@@ -19,8 +19,8 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Enable pgvector extension
-    op.execute("CREATE EXTENSION IF NOT EXISTS vector")
+# Enable pgvector extension
+    # op.execute("CREATE EXTENSION IF NOT EXISTS vector")
 
     # Create users table — minimal shape for stage 1 (FK integrity only)
     op.create_table(
@@ -74,7 +74,7 @@ def upgrade() -> None:
             nullable=False,
             server_default=sa.text("'[]'::jsonb"),
         ),
-        sa.Column("embedding_vector", Vector(384), nullable=False),
+        sa.Column("embedding_vector", sa.dialects.postgresql.ARRAY(sa.Float()), nullable=False),
         sa.Column(
             "updated_at",
             sa.DateTime(timezone=True),
@@ -87,4 +87,4 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.drop_table("user_profiles")
     op.drop_table("users")
-    op.execute("DROP EXTENSION IF EXISTS vector")
+    # op.execute("DROP EXTENSION IF EXISTS vector")
