@@ -102,14 +102,6 @@ export type FollowupReminder = {
 
 const isProbablyUrl = (value: string) => /^https?:\/\//i.test(value.trim());
 
-const makeLocalUserId = (email: string) => {
-  const stored = localStorage.getItem(`local_user_id:${email}`);
-  if (stored) return stored;
-
-  const id = crypto.randomUUID();
-  localStorage.setItem(`local_user_id:${email}`, id);
-  return id;
-};
 
 const normalizeProfile = (
   parsed: ProfileParseResponse,
@@ -339,13 +331,6 @@ export const apiClient = {
   },
 
   /**
-   * Check if email exists
-   */
-  async checkEmailExists(_email: string): Promise<boolean> {
-    return false;
-  },
-
-  /**
    * Save onboarding profile data
    */
   async saveOnboardingProfile(userId: string, _data: any): Promise<UserProfile> {
@@ -374,32 +359,5 @@ export const apiClient = {
     return data.bounties ?? [];
   },
 
-  /**
-   * Authenticate or register user via name, email and password
-   */
-  async login(name: string, email: string, password: string): Promise<{ user_id: string; email: string; name: string | null; has_profile: boolean; profile: UserProfile | null }> {
-    const res = await fetch(`${BASE_URL}/auth/login`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ name, email, password }),
-    });
-    if (!res.ok) {
-      const user_id = makeLocalUserId(email);
-      return {
-        user_id,
-        email,
-        name: name || null,
-        has_profile: true,
-        profile: {
-          ...mockUserProfile,
-          id: `profile_${user_id}`,
-          user_id,
-          updated_at: new Date().toISOString(),
-        },
-      };
-    }
-    return await res.json();
-  }
 };
+

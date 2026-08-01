@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 import { Routes, Route, useLocation, useNavigate } from "react-router-dom";
 import { Navbar } from "./components/Navbar";
 import { Footer } from "./components/Footer";
@@ -6,47 +6,22 @@ import { LandingPage } from "./pages/LandingPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { LoginPage } from "./pages/LoginPage";
 import { OnboardingPage } from "./pages/OnboardingPage";
-import type { UserProfile } from "./types/schema";
-
-const readStoredJson = <T,>(key: string): T | null => {
-  try {
-    const stored = localStorage.getItem(key);
-    return stored ? JSON.parse(stored) as T : null;
-  } catch {
-    localStorage.removeItem(key);
-    return null;
-  }
-};
+import { useAuth, hasCompletedOnboarding } from "./lib/useAuth";
 
 export function App() {
   const location = useLocation();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<"landing" | "dashboard">("landing");
+  const { user, loading } = useAuth();
 
-  // Auth state
-  const [userSession, setUserSession] = useState<{ userId: string; email: string; name: string | null } | null>(() => {
-    return readStoredJson("user_session");
-  });
-
-  // Global App State
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(() => {
-    return readStoredJson("user_profile");
-  });
-
-  // Sync navbar with current route
-  useEffect(() => {
-    if (location.pathname === "/dashboard") {
-      setActiveTab("dashboard");
-    } else {
-      setActiveTab("landing");
-    }
-  }, [location.pathname]);
+  // Determine active tab for Navbar
+  const activeTab: "landing" | "dashboard" =
+    location.pathname === "/dashboard" ? "dashboard" : "landing";
 
   const handleTabChange = (tab: "landing" | "dashboard") => {
     if (tab === "dashboard") {
-      if (!userSession) {
+      if (!user) {
         navigate("/login");
-      } else if (!userProfile) {
+      } else if (!hasCompletedOnboarding(user)) {
         navigate("/onboarding");
       } else {
         navigate("/dashboard");
@@ -57,36 +32,44 @@ export function App() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const handleLoginSuccess = (user: {
-    userId: string;
-    email: string;
-    name: string | null;
-    profile: UserProfile | null;
-  }) => {
-    const sessionData = { userId: user.userId, email: user.email, name: user.name };
-    localStorage.setItem("user_session", JSON.stringify(sessionData));
-    setUserSession(sessionData);
+  // Redirect authenticated users away from /login
+  useEffect(() => {
+    if (!loading && user && location.pathname === "/login") {
+      if (!hasCompletedOnboarding(user)) {
+        navigate("/onboarding");
+      } else {
+        navigate("/dashboard");
+      }
+    }
+  }, [user, loading, location.pathname, navigate]);
 
-    if (user.profile) {
-      localStorage.setItem("user_profile", JSON.stringify(user.profile));
-      setUserProfile(user.profile);
-      // Returning user with existing profile - go straight to dashboard
-      navigate("/dashboard");
-    } else {
-      localStorage.removeItem("user_profile");
-      setUserProfile(null);
-      // New user - go through onboarding wizard
+  // Redirect authenticated users with no profile away from /dashboard
+  useEffect(() => {
+    if (!loading && user && location.pathname === "/dashboard" && !hasCompletedOnboarding(user)) {
       navigate("/onboarding");
     }
-  };
-
-  const handleOnboardingComplete = (profile: UserProfile) => {
-    localStorage.setItem("user_profile", JSON.stringify(profile));
-    setUserProfile(profile);
-  };
+  }, [user, loading, location.pathname, navigate]);
 
   const isDashboard = location.pathname === "/dashboard";
   const hideNavbar = ["/dashboard", "/login", "/onboarding"].includes(location.pathname);
+
+  // Show a blank screen while checking auth state (avoids flash of login page)
+  if (loading) {
+    return (
+      <div style={{
+        minHeight: "100vh", background: "#080808",
+        display: "flex", alignItems: "center", justifyContent: "center",
+      }}>
+        <div style={{
+          width: "32px", height: "32px", borderRadius: "50%",
+          border: "2px solid rgba(200,168,75,0.2)",
+          borderTopColor: "#c8a84b",
+          animation: "spin 0.8s linear infinite",
+        }} />
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    );
+  }
 
   return (
     <div style={{
@@ -109,9 +92,9 @@ export function App() {
           <Route
             path="/"
             element={<LandingPage onTriggerUpload={() => {
-              if (!userSession) {
+              if (!user) {
                 navigate("/login");
-              } else if (!userProfile) {
+              } else if (!hasCompletedOnboarding(user)) {
                 navigate("/onboarding");
               } else {
                 navigate("/dashboard");
@@ -120,19 +103,19 @@ export function App() {
           />
           <Route
             path="/login"
-            element={<LoginPage onLoginSuccess={handleLoginSuccess} onBackToLanding={() => navigate("/")} />}
+            element={<LoginPage onBackToLanding={() => navigate("/")} />}
           />
           <Route
             path="/onboarding"
             element={
-              userSession
-                ? <OnboardingPage userId={userSession.userId} onComplete={handleOnboardingComplete} />
-                : <LoginPage onLoginSuccess={handleLoginSuccess} onBackToLanding={() => navigate("/")} />
+              user
+                ? <OnboardingPage />
+                : <LoginPage onBackToLanding={() => navigate("/")} />
             }
           />
           <Route
             path="/dashboard"
-            element={<DashboardPage globalProfile={userProfile} userSession={userSession} />}
+            element={<DashboardPage />}
           />
         </Routes>
       </main>

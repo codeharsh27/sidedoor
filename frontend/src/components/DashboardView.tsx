@@ -1,17 +1,18 @@
 import React, { useState, useEffect } from 'react';
+import type { User } from '@supabase/supabase-js';
 import type { OpportunityCardView, FixabilityFlags, UserProfile, BountyItem } from '../types/schema';
 import { CompanyLogo } from './CompanyLogo';
 import { apiClient } from '../api/client';
-import { 
+import { useAuth, getUserDisplayName, getUserInitials } from '../lib/useAuth';
+import {
   Terminal, Search, ShieldAlert,
   ArrowUpRight, Building2, PanelLeftClose, PanelLeftOpen,
-  PanelRightClose, PanelRightOpen, ArrowLeft, Upload, Link as LinkIcon, Send, AlertCircle, Plus, FileText, X, Settings, Check
+  PanelRightClose, PanelRightOpen, ArrowLeft, Upload, Link as LinkIcon, Send, AlertCircle, Plus, FileText, X, Settings, Check, LogOut, MapPin, Calendar
 } from 'lucide-react';
-
-
 
 interface DashboardViewProps {
   userProfile?: UserProfile;
+  supabaseUser?: User;
   onBackToLanding?: () => void;
 }
 
@@ -117,7 +118,27 @@ const getOpportunityDetails = (item: OpportunityCardView) => {
   }
 };
 
-export const DashboardView: React.FC<DashboardViewProps> = ({ userProfile, onBackToLanding }) => {
+export const DashboardView: React.FC<DashboardViewProps> = ({ userProfile, supabaseUser: supabaseUserProp, onBackToLanding }) => {
+  const { user: authUser, signOut } = useAuth();
+  const supabaseUser = supabaseUserProp ?? authUser;
+
+  // Derived user info from Supabase
+  const displayName = getUserDisplayName(supabaseUser);
+  const initials = getUserInitials(supabaseUser);
+  const userEmail = supabaseUser?.email ?? '';
+  const userLocation = supabaseUser?.user_metadata?.location ?? '';
+  const userRole = supabaseUser?.user_metadata?.onboarding?.role ?? '';
+  const userTechStack: string[] = supabaseUser?.user_metadata?.onboarding?.tech_stack ?? [];
+  const userTargetInvestors: string[] = supabaseUser?.user_metadata?.onboarding?.target_investors ?? [];
+  const memberSince = supabaseUser?.created_at
+    ? new Date(supabaseUser.created_at).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })
+    : 'Recently joined';
+
+  const handleSignOut = async () => {
+    await signOut();
+    onBackToLanding?.();
+  };
+
   const [leftPaneOpen, setLeftPaneOpen] = useState(true);
   const [rightPaneOpen, setRightPaneOpen] = useState(true);
   
@@ -659,9 +680,9 @@ Arjun is building a 4-hour MVP to showcase his skills to ${item.company.name}.
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <div style={{ width: '24px', height: '24px', borderRadius: '50%', backgroundColor: 'var(--accent-gold)', color: 'var(--ink)', display: 'flex', alignItems: 'center', justifyItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 700 }}>
-                AS
+                {initials}
               </div>
-              <span style={{ maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Aditya Sharma</span>
+              <span style={{ maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName}</span>
             </div>
             <Settings size={14} color={viewMode === 'account' ? 'var(--ink)' : 'var(--text-dim)'} />
           </button>
@@ -692,24 +713,52 @@ Arjun is building a 4-hour MVP to showcase his skills to ${item.company.name}.
             <div style={{ maxWidth: '800px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '32px' }}>
               
               {/* Profile Card */}
-              <div className="paper-card" style={{ padding: '32px', backgroundColor: 'var(--paper)', borderRadius: '16px', border: '1px solid var(--border-light)', display: 'flex', gap: '24px', alignItems: 'center' }}>
-                <div style={{ width: '80px', height: '80px', borderRadius: '50%', backgroundColor: 'var(--cream)', border: '2px solid var(--accent-gold)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '2rem', fontWeight: 700, color: 'var(--ink)' }}>
-                  AS
+              <div className="paper-card" style={{ padding: '32px', backgroundColor: 'var(--paper)', borderRadius: '16px', border: '1px solid var(--border-light)', display: 'flex', gap: '24px', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', gap: '24px', alignItems: 'center' }}>
+                  <div style={{ width: '80px', height: '80px', borderRadius: '50%', backgroundColor: 'var(--cream)', border: '2px solid var(--accent-gold)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '2rem', fontWeight: 700, color: 'var(--ink)', flexShrink: 0 }}>
+                    {initials}
+                  </div>
+                  <div>
+                    <h3 className="font-serif" style={{ margin: '0 0 4px 0', fontSize: '1.5rem', color: 'var(--ink)', fontWeight: 500 }}>{displayName}</h3>
+                    <p className="font-mono" style={{ margin: '0 0 6px 0', fontSize: '0.85rem', color: 'var(--text-dim)' }}>{userEmail}</p>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                      <span className="badge badge-moss" style={{ fontSize: '0.75rem', padding: '4px 10px' }}>Account Active</span>
+                      {userLocation && (
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.78rem', color: 'var(--text-dim)', fontFamily: 'var(--font-mono)' }}>
+                          <MapPin size={11} /> {userLocation}
+                        </span>
+                      )}
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.78rem', color: 'var(--text-dim)', fontFamily: 'var(--font-mono)' }}>
+                        <Calendar size={11} /> Member since {memberSince}
+                      </span>
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="font-serif" style={{ margin: '0 0 4px 0', fontSize: '1.5rem', color: 'var(--ink)', fontWeight: 500 }}>Aditya Sharma</h3>
-                  <p className="font-mono" style={{ margin: '0 0 12px 0', fontSize: '0.85rem', color: 'var(--text-dim)' }}>aditya.sharma@gmail.com</p>
-                  <span className="badge badge-moss" style={{ fontSize: '0.75rem', padding: '4px 10px' }}>Developer Account Active</span>
-                </div>
+                {/* Sign Out */}
+                <button
+                  onClick={handleSignOut}
+                  style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 18px', borderRadius: '8px', border: '1px solid var(--border)', backgroundColor: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600, transition: 'all 0.2s', flexShrink: 0 }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = '#ef4444'; (e.currentTarget as HTMLButtonElement).style.color = '#ef4444'; }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--border)'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-muted)'; }}
+                >
+                  <LogOut size={15} />
+                  Sign Out
+                </button>
               </div>
 
-              {/* Grid: Metrics & Resume Insights */}
+              {/* Grid: Metrics & Profile Details */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
-                
+
                 {/* Usage Metrics */}
                 <div className="paper-card" style={{ padding: '24px', backgroundColor: 'var(--surface)', borderRadius: '12px', border: '1px solid var(--border-light)' }}>
                   <h4 className="font-mono" style={{ fontSize: '0.8rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '16px', fontWeight: 700 }}>Scouting Activity</h4>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    {userRole && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>Role</span>
+                        <strong style={{ fontSize: '0.9rem', color: 'var(--ink)', textTransform: 'capitalize' }}>{userRole.replace('_', ' ')}</strong>
+                      </div>
+                    )}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span style={{ fontSize: '0.95rem', color: 'var(--text-muted)' }}>Target Companies Scanned</span>
                       <strong style={{ fontSize: '1.2rem', color: 'var(--ink)' }}>{searchHistory.length}</strong>
@@ -725,24 +774,30 @@ Arjun is building a 4-hour MVP to showcase his skills to ${item.company.name}.
                   </div>
                 </div>
 
-                {/* Resume Insights */}
+                {/* Tech Stack from Onboarding */}
                 <div className="paper-card" style={{ padding: '24px', backgroundColor: 'var(--surface)', borderRadius: '12px', border: '1px solid var(--border-light)' }}>
-                  <h4 className="font-mono" style={{ fontSize: '0.8rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '16px', fontWeight: 700 }}>Parsed Credentials</h4>
-                  {uploadedFile ? (
+                  <h4 className="font-mono" style={{ fontSize: '0.8rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '16px', fontWeight: 700 }}>Your Tech Stack</h4>
+                  {userTechStack.length > 0 ? (
                     <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-                        <FileText size={16} color="var(--accent-gold)" />
-                        <span style={{ fontSize: '0.9rem', color: 'var(--ink)', fontWeight: 600, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{uploadedFile.name}</span>
-                      </div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                        {userProfile?.parsed_skills?.map(skill => (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '16px' }}>
+                        {userTechStack.map(skill => (
                           <span key={skill} className="badge" style={{ backgroundColor: 'var(--paper)', border: '1px solid var(--border-light)', color: 'var(--text-muted)', fontSize: '0.75rem' }}>{skill}</span>
                         ))}
                       </div>
+                      {userTargetInvestors.length > 0 && (
+                        <>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', fontFamily: 'var(--font-mono)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Target Investors</div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                            {userTargetInvestors.map(inv => (
+                              <span key={inv} style={{ fontSize: '0.72rem', backgroundColor: 'rgba(152,118,26,0.1)', color: 'var(--accent-gold)', padding: '2px 8px', borderRadius: '4px', border: '1px solid rgba(152,118,26,0.2)', fontWeight: 600 }}>{inv.toUpperCase()}</span>
+                            ))}
+                          </div>
+                        </>
+                      )}
                     </div>
                   ) : (
-                    <div style={{ fontSize: '0.95rem', color: 'var(--text-dim)', fontStyle: 'italic' }}>
-                      No resume uploaded yet. Go back and drag-and-drop your resume to align custom opportunities.
+                    <div style={{ fontSize: '0.88rem', color: 'var(--text-dim)', fontStyle: 'italic', lineHeight: 1.5 }}>
+                      Complete onboarding to see your matched tech stack here.
                     </div>
                   )}
                 </div>

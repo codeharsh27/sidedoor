@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { ArrowRight, ArrowLeft, Check, Zap } from "lucide-react";
+import { ArrowRight, ArrowLeft, Check, Zap, MapPin, User as UserIcon, Briefcase } from "lucide-react";
 import type { OnboardingData } from "../types/schema";
 
 interface OnboardingWizardProps {
-  userId: string;
-  onComplete: (data: OnboardingData) => Promise<void>;
+  userName?: string;
+  onComplete: (data: OnboardingData & { name: string; location: string; user_type: string }) => Promise<void>;
 }
 
 const ROLES = [
@@ -56,6 +56,13 @@ const VALUES = [
   { id: "small_team",  label: "Small team (<50)" },
 ];
 
+const USER_TYPES = [
+  { id: "student",      label: "Student",              desc: "Currently in college / university" },
+  { id: "recent_grad",  label: "Recent Graduate",      desc: "Graduated in the last 2 years" },
+  { id: "professional", label: "Working Professional", desc: "Currently employed, looking to switch" },
+  { id: "career_switch",label: "Career Switcher",      desc: "Transitioning from a different field" },
+];
+
 const toggle = (arr: string[], val: string): string[] =>
   arr.includes(val) ? arr.filter(v => v !== val) : [...arr, val];
 
@@ -69,6 +76,20 @@ const EMPTY_DATA: OnboardingData = {
   project_summary: "",
   target_investors: ["yc", "a16z"],
   company_values: ["eng_culture", "fast"],
+};
+
+const INPUT_STYLE: React.CSSProperties = {
+  width: "100%",
+  padding: "12px 16px",
+  borderRadius: "10px",
+  border: "1px solid rgba(255,255,255,0.1)",
+  background: "rgba(255,255,255,0.05)",
+  color: "rgba(255,255,255,0.88)",
+  fontSize: "0.92rem",
+  outline: "none",
+  fontFamily: "var(--font-sans)",
+  boxSizing: "border-box",
+  transition: "border-color 0.2s, box-shadow 0.2s",
 };
 
 function Chip({ label, selected, onClick }: { label: string; selected: boolean; onClick: () => void }) {
@@ -101,6 +122,82 @@ function Pill({ label, selected, onClick }: { label: string; selected: boolean; 
   );
 }
 
+// ----- STEP 0: Identity -----
+function StepZero({
+  name, location, userType,
+  onName, onLocation, onUserType,
+}: {
+  name: string; location: string; userType: string;
+  onName: (v: string) => void; onLocation: (v: string) => void; onUserType: (v: string) => void;
+}) {
+  const handleFocus = (e: React.FocusEvent<HTMLInputElement>) => {
+    e.target.style.borderColor = "#c8a84b";
+    e.target.style.boxShadow = "0 0 0 2px rgba(200,168,75,0.12)";
+  };
+  const handleBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    e.target.style.borderColor = "rgba(255,255,255,0.1)";
+    e.target.style.boxShadow = "none";
+  };
+
+  return (
+    <div className="onboarding-step" style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+        {/* Full Name */}
+        <div>
+          <label style={{ fontSize: "0.72rem", color: "rgba(255,255,255,0.3)", fontWeight: 700, display: "flex", alignItems: "center", gap: "6px", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.08em", fontFamily: "var(--font-mono)" }}>
+            <UserIcon size={11} /> Full Name
+          </label>
+          <input
+            type="text" placeholder="e.g. Arjun Mehta"
+            value={name} onChange={e => onName(e.target.value)}
+            onFocus={handleFocus} onBlur={handleBlur}
+            style={INPUT_STYLE}
+          />
+        </div>
+
+        {/* Location */}
+        <div>
+          <label style={{ fontSize: "0.72rem", color: "rgba(255,255,255,0.3)", fontWeight: 700, display: "flex", alignItems: "center", gap: "6px", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.08em", fontFamily: "var(--font-mono)" }}>
+            <MapPin size={11} /> City / Location
+          </label>
+          <input
+            type="text" placeholder="e.g. Bangalore, India"
+            value={location} onChange={e => onLocation(e.target.value)}
+            onFocus={handleFocus} onBlur={handleBlur}
+            style={INPUT_STYLE}
+          />
+          <p style={{ margin: "6px 0 0", fontSize: "0.72rem", color: "rgba(255,255,255,0.2)", fontFamily: "var(--font-mono)" }}>
+            We use this to surface region-relevant opportunities like India-based hackathons and grants.
+          </p>
+        </div>
+      </div>
+
+      {/* User Type */}
+      <div>
+        <label style={{ fontSize: "0.72rem", color: "rgba(255,255,255,0.3)", fontWeight: 700, display: "flex", alignItems: "center", gap: "6px", marginBottom: "12px", textTransform: "uppercase", letterSpacing: "0.08em", fontFamily: "var(--font-mono)" }}>
+          <Briefcase size={11} /> What best describes you?
+        </label>
+        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+          {USER_TYPES.map(t => (
+            <button
+              key={t.id}
+              onClick={() => onUserType(t.id)}
+              className={`onboarding-option${userType === t.id ? " selected" : ""}`}
+            >
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 600, fontSize: "0.9rem" }}>{t.label}</div>
+                <div style={{ fontSize: "0.75rem", opacity: 0.45, marginTop: "2px" }}>{t.desc}</div>
+              </div>
+              {userType === t.id && <Check size={14} color="#c8a84b" />}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ----- STEP 1: Role & Experience -----
 function StepOne({ data, update }: { data: OnboardingData; update: (p: Partial<OnboardingData>) => void }) {
   return (
     <div className="onboarding-step" style={{ display: "flex", flexDirection: "column", gap: "28px" }}>
@@ -155,13 +252,14 @@ function StepOne({ data, update }: { data: OnboardingData; update: (p: Partial<O
   );
 }
 
+// ----- STEP 2: Tech Stack -----
 function StepTwo({ data, update }: { data: OnboardingData; update: (p: Partial<OnboardingData>) => void }) {
   return (
     <div className="onboarding-step" style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
       <div>
         <p className="onboarding-section-label">Your core tech stack</p>
         <p style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.28)", marginBottom: "14px", fontFamily: "var(--font-mono)" }}>
-          Click all that apply -- we match these against real engineering gaps at target companies
+          Click all that apply — we match these against real engineering gaps at target companies
         </p>
         <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
           {TECH_GROUPS.map(group => (
@@ -191,29 +289,42 @@ function StepTwo({ data, update }: { data: OnboardingData; update: (p: Partial<O
   );
 }
 
+// ----- STEP 3: Signal -----
 function StepThree({ data, update }: { data: OnboardingData; update: (p: Partial<OnboardingData>) => void }) {
+  const handleFocus = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    e.target.style.borderColor = "#c8a84b";
+    e.target.style.boxShadow = "0 0 0 2px rgba(200,168,75,0.12)";
+  };
+  const handleBlur = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    e.target.style.borderColor = "rgba(255,255,255,0.1)";
+    e.target.style.boxShadow = "none";
+  };
+
   return (
     <div className="onboarding-step" style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
       <div>
-        <label className="onboarding-input-label">GitHub URL -- optional, shows your real work</label>
+        <label className="onboarding-input-label">GitHub URL — optional, shows your real work</label>
         <input
           className="onboarding-input"
           type="url"
           placeholder="https://github.com/yourhandle"
           value={data.github_url}
           onChange={e => update({ github_url: e.target.value })}
+          onFocus={handleFocus} onBlur={handleBlur}
+          style={INPUT_STYLE}
         />
       </div>
 
       <div>
-        <label className="onboarding-input-label">Strongest project in 1-2 sentences -- optional</label>
+        <label className="onboarding-input-label">Strongest project in 1–2 sentences — optional</label>
         <textarea
           className="onboarding-input"
           rows={3}
           placeholder='e.g. "Built a real-time webhook debugger for Stripe integrations using React + Supabase. 40+ GitHub stars."'
           value={data.project_summary}
           onChange={e => update({ project_summary: e.target.value })}
-          style={{ resize: "vertical", lineHeight: 1.5 }}
+          onFocus={handleFocus} onBlur={handleBlur}
+          style={{ ...INPUT_STYLE, resize: "vertical", lineHeight: 1.5 }}
         />
       </div>
 
@@ -248,11 +359,14 @@ function StepThree({ data, update }: { data: OnboardingData; update: (p: Partial
   );
 }
 
-const STEPS = ["Role & Experience", "Tech Stack", "Your Signal"];
+const STEPS = ["About You", "Role & Experience", "Tech Stack", "Your Signal"];
 
-export function OnboardingWizard({ userId: _userId, onComplete }: OnboardingWizardProps) {
+export function OnboardingWizard({ userName = "", onComplete }: OnboardingWizardProps) {
   const [step, setStep] = useState(0);
   const [data, setData] = useState<OnboardingData>(EMPTY_DATA);
+  const [name, setName] = useState(userName);
+  const [location, setLocation] = useState("");
+  const [userType, setUserType] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const update = (patch: Partial<OnboardingData>) =>
@@ -261,24 +375,31 @@ export function OnboardingWizard({ userId: _userId, onComplete }: OnboardingWiza
   const progress = ((step + 1) / STEPS.length) * 100;
 
   const canContinue =
-    step === 0 ? data.role !== "" && data.years_experience !== "" :
-    step === 1 ? data.tech_stack.length >= 1 : true;
+    step === 0 ? name.trim().length > 0 && userType !== "" :
+    step === 1 ? data.role !== "" && data.years_experience !== "" :
+    step === 2 ? data.tech_stack.length >= 1 : true;
 
   const handleFinish = async () => {
     setIsSubmitting(true);
-    try { await onComplete(data); } finally { setIsSubmitting(false); }
+    try {
+      await onComplete({ ...data, name, location, user_type: userType });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const stepHeadlines = [
-    <span key="s0">What kind of engineer <em style={{ fontStyle: "italic", color: "#c8a84b" }}>are you?</em></span>,
-    <span key="s1">{"What's in your "}<em style={{ fontStyle: "italic", color: "#c8a84b" }}>tech arsenal?</em></span>,
-    <span key="s2">Show us your <em style={{ fontStyle: "italic", color: "#c8a84b" }}>signal.</em></span>,
+    <span key="s0">Tell us <em style={{ fontStyle: "italic", color: "#c8a84b" }}>about yourself.</em></span>,
+    <span key="s1">What kind of engineer <em style={{ fontStyle: "italic", color: "#c8a84b" }}>are you?</em></span>,
+    <span key="s2">{"What's in your "}<em style={{ fontStyle: "italic", color: "#c8a84b" }}>tech arsenal?</em></span>,
+    <span key="s3">Show us your <em style={{ fontStyle: "italic", color: "#c8a84b" }}>signal.</em></span>,
   ];
 
   const stepSubs = [
+    "Helps us surface region-specific opportunities and match you to the right company stage.",
     "Determines which opportunities we surface for you.",
     "We match your stack against real engineering gaps in target companies.",
-    "Optional but powerful -- personalises your match scores immediately.",
+    "Optional but powerful — personalises your match scores immediately.",
   ];
 
   return (
@@ -324,9 +445,10 @@ export function OnboardingWizard({ userId: _userId, onComplete }: OnboardingWiza
 
       {/* Step content */}
       <div style={{ padding: "0 32px" }}>
-        {step === 0 && <StepOne data={data} update={update} />}
-        {step === 1 && <StepTwo data={data} update={update} />}
-        {step === 2 && <StepThree data={data} update={update} />}
+        {step === 0 && <StepZero name={name} location={location} userType={userType} onName={setName} onLocation={setLocation} onUserType={setUserType} />}
+        {step === 1 && <StepOne data={data} update={update} />}
+        {step === 2 && <StepTwo data={data} update={update} />}
+        {step === 3 && <StepThree data={data} update={update} />}
       </div>
 
       {/* Footer nav */}
@@ -352,14 +474,14 @@ export function OnboardingWizard({ userId: _userId, onComplete }: OnboardingWiza
       {/* Skip */}
       <div style={{ textAlign: "center", paddingBottom: "24px" }}>
         <button
-          onClick={() => onComplete(EMPTY_DATA)}
+          onClick={() => onComplete({ ...EMPTY_DATA, name, location, user_type: userType })}
           style={{
             background: "none", border: "none", color: "rgba(255,255,255,0.2)",
             fontSize: "0.75rem", cursor: "pointer", fontFamily: "var(--font-mono)",
             textDecoration: "underline", textUnderlineOffset: "2px"
           }}
         >
-          Skip for now -- fill this in later
+          Skip for now — fill this in later
         </button>
       </div>
     </div>

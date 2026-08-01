@@ -1,33 +1,27 @@
 import { useEffect } from 'react';
 import { DashboardView } from '../components/DashboardView';
 import { useNavigate } from 'react-router-dom';
-import type { UserProfile } from '../types/schema';
+import { useAuth } from '../lib/useAuth';
 
-interface DashboardPageProps {
-  globalProfile: UserProfile | null;
-  userSession: { userId: string; email: string; name: string | null } | null;
-}
-
-export function DashboardPage({ globalProfile, userSession }: DashboardPageProps) {
+export function DashboardPage() {
   const navigate = useNavigate();
+  const { user, loading } = useAuth();
 
   useEffect(() => {
-    if (!userSession) {
+    if (!loading && !user) {
       navigate('/login');
     }
-  }, [userSession, navigate]);
+  }, [user, loading, navigate]);
 
-  if (!userSession) {
+  if (loading || !user) {
     return null;
   }
 
   return (
     <div style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
-      <DashboardView 
-        userProfile={globalProfile || undefined} 
-        onBackToLanding={() => {
-          navigate('/');
-        }} 
+      <DashboardView
+        supabaseUser={user}
+        onBackToLanding={() => navigate('/')}
       />
     </div>
   );
