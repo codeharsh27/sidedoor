@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowRight, ArrowLeft, Check, Zap, MapPin, User as UserIcon, Briefcase } from "lucide-react";
+import { ArrowRight, ArrowLeft, Check, Zap, MapPin, Briefcase } from "lucide-react";
 import type { OnboardingData } from "../types/schema";
 
 interface OnboardingWizardProps {
@@ -57,39 +57,25 @@ const VALUES = [
 ];
 
 const USER_TYPES = [
-  { id: "student",      label: "Student",              desc: "Currently in college / university" },
-  { id: "recent_grad",  label: "Recent Graduate",      desc: "Graduated in the last 2 years" },
-  { id: "professional", label: "Working Professional", desc: "Currently employed, looking to switch" },
-  { id: "career_switch",label: "Career Switcher",      desc: "Transitioning from a different field" },
+  { id: "student",       label: "Student",              desc: "Currently in college / university" },
+  { id: "recent_grad",   label: "Recent Graduate",      desc: "Graduated in the last 2 years" },
+  { id: "professional",  label: "Working Professional", desc: "Currently employed, looking to switch" },
+  { id: "career_switch", label: "Career Switcher",      desc: "Transitioning from a different field" },
 ];
 
 const toggle = (arr: string[], val: string): string[] =>
   arr.includes(val) ? arr.filter(v => v !== val) : [...arr, val];
 
 const EMPTY_DATA: OnboardingData = {
-  role: "product_engineer",
+  role: "",
   years_experience: "",
-  focus: "switch",
+  focus: "",
   tech_stack: [],
   domains: [],
   github_url: "",
   project_summary: "",
-  target_investors: ["yc", "a16z"],
-  company_values: ["eng_culture", "fast"],
-};
-
-const INPUT_STYLE: React.CSSProperties = {
-  width: "100%",
-  padding: "12px 16px",
-  borderRadius: "10px",
-  border: "1px solid rgba(255,255,255,0.1)",
-  background: "rgba(255,255,255,0.05)",
-  color: "rgba(255,255,255,0.88)",
-  fontSize: "0.92rem",
-  outline: "none",
-  fontFamily: "var(--font-sans)",
-  boxSizing: "border-box",
-  transition: "border-color 0.2s, box-shadow 0.2s",
+  target_investors: [],
+  company_values: [],
 };
 
 function Chip({ label, selected, onClick }: { label: string; selected: boolean; onClick: () => void }) {
@@ -99,13 +85,12 @@ function Chip({ label, selected, onClick }: { label: string; selected: boolean; 
       style={{
         display: "inline-flex", alignItems: "center", gap: "5px",
         padding: "5px 12px", borderRadius: "999px",
-        border: `1px solid ${selected ? "#c8a84b" : "rgba(255,255,255,0.1)"}`,
-        background: selected ? "rgba(200,168,75,0.12)" : "rgba(255,255,255,0.03)",
-        color: selected ? "#e8c96a" : "rgba(255,255,255,0.45)",
+        border: `1px solid ${selected ? "var(--accent-gold)" : "var(--border)"}`,
+        background: selected ? "rgba(152,118,26,0.1)" : "var(--surface)",
+        color: selected ? "var(--accent-gold)" : "var(--text-muted)",
         fontFamily: "var(--font-mono)", fontSize: "0.76rem",
-        fontWeight: selected ? 600 : 400, cursor: "pointer",
-        transition: "all 0.15s ease", userSelect: "none",
-        boxShadow: selected ? "0 0 0 1px rgba(200,168,75,0.15)" : "none",
+        fontWeight: selected ? 700 : 500,
+        cursor: "pointer", transition: "all 0.15s ease", userSelect: "none",
       }}
     >
       {selected && <Check size={10} />}
@@ -130,54 +115,45 @@ function StepZero({
   name: string; location: string; userType: string;
   onName: (v: string) => void; onLocation: (v: string) => void; onUserType: (v: string) => void;
 }) {
-  const handleFocus = (e: React.FocusEvent<HTMLInputElement>) => {
-    e.target.style.borderColor = "#c8a84b";
-    e.target.style.boxShadow = "0 0 0 2px rgba(200,168,75,0.12)";
-  };
-  const handleBlur = (e: React.FocusEvent<HTMLInputElement>) => {
-    e.target.style.borderColor = "rgba(255,255,255,0.1)";
-    e.target.style.boxShadow = "none";
-  };
-
   return (
-    <div className="onboarding-step" style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-      <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-        {/* Full Name */}
-        <div>
-          <label style={{ fontSize: "0.72rem", color: "rgba(255,255,255,0.3)", fontWeight: 700, display: "flex", alignItems: "center", gap: "6px", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.08em", fontFamily: "var(--font-mono)" }}>
-            <UserIcon size={11} /> Full Name
-          </label>
-          <input
-            type="text" placeholder="e.g. Arjun Mehta"
-            value={name} onChange={e => onName(e.target.value)}
-            onFocus={handleFocus} onBlur={handleBlur}
-            style={INPUT_STYLE}
-          />
-        </div>
+    <div className="onboarding-step" style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+      {/* Full Name */}
+      <div>
+        <label className="onboarding-input-label" style={{ display: "flex", alignItems: "center", gap: "5px" }}>
+          Full Name
+        </label>
+        <input
+          type="text"
+          placeholder="e.g. Arjun Mehta"
+          value={name}
+          onChange={e => onName(e.target.value)}
+          className="onboarding-input"
+        />
+      </div>
 
-        {/* Location */}
-        <div>
-          <label style={{ fontSize: "0.72rem", color: "rgba(255,255,255,0.3)", fontWeight: 700, display: "flex", alignItems: "center", gap: "6px", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.08em", fontFamily: "var(--font-mono)" }}>
-            <MapPin size={11} /> City / Location
-          </label>
-          <input
-            type="text" placeholder="e.g. Bangalore, India"
-            value={location} onChange={e => onLocation(e.target.value)}
-            onFocus={handleFocus} onBlur={handleBlur}
-            style={INPUT_STYLE}
-          />
-          <p style={{ margin: "6px 0 0", fontSize: "0.72rem", color: "rgba(255,255,255,0.2)", fontFamily: "var(--font-mono)" }}>
-            We use this to surface region-relevant opportunities like India-based hackathons and grants.
-          </p>
-        </div>
+      {/* Location */}
+      <div>
+        <label className="onboarding-input-label" style={{ display: "flex", alignItems: "center", gap: "5px" }}>
+          <MapPin size={10} /> City / Location
+        </label>
+        <input
+          type="text"
+          placeholder="e.g. Bangalore, India"
+          value={location}
+          onChange={e => onLocation(e.target.value)}
+          className="onboarding-input"
+        />
+        <p style={{ margin: "5px 0 0", fontSize: "0.74rem", color: "var(--text-dim)", fontFamily: "var(--font-mono)" }}>
+          Used to surface India-based hackathons and region-relevant grants.
+        </p>
       </div>
 
       {/* User Type */}
       <div>
-        <label style={{ fontSize: "0.72rem", color: "rgba(255,255,255,0.3)", fontWeight: 700, display: "flex", alignItems: "center", gap: "6px", marginBottom: "12px", textTransform: "uppercase", letterSpacing: "0.08em", fontFamily: "var(--font-mono)" }}>
-          <Briefcase size={11} /> What best describes you?
-        </label>
-        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+        <p className="onboarding-section-label" style={{ display: "flex", alignItems: "center", gap: "5px" }}>
+          <Briefcase size={10} /> What best describes you?
+        </p>
+        <div style={{ display: "flex", flexDirection: "column", gap: "7px" }}>
           {USER_TYPES.map(t => (
             <button
               key={t.id}
@@ -185,10 +161,10 @@ function StepZero({
               className={`onboarding-option${userType === t.id ? " selected" : ""}`}
             >
               <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 600, fontSize: "0.9rem" }}>{t.label}</div>
-                <div style={{ fontSize: "0.75rem", opacity: 0.45, marginTop: "2px" }}>{t.desc}</div>
+                <div style={{ fontWeight: 600, fontSize: "0.9rem", color: "var(--ink)" }}>{t.label}</div>
+                <div style={{ fontSize: "0.75rem", color: "var(--text-dim)", marginTop: "2px" }}>{t.desc}</div>
               </div>
-              {userType === t.id && <Check size={14} color="#c8a84b" />}
+              {userType === t.id && <Check size={14} color="var(--accent-gold)" />}
             </button>
           ))}
         </div>
@@ -200,10 +176,10 @@ function StepZero({
 // ----- STEP 1: Role & Experience -----
 function StepOne({ data, update }: { data: OnboardingData; update: (p: Partial<OnboardingData>) => void }) {
   return (
-    <div className="onboarding-step" style={{ display: "flex", flexDirection: "column", gap: "28px" }}>
+    <div className="onboarding-step" style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
       <div>
         <p className="onboarding-section-label">What kind of engineer are you?</p>
-        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "7px" }}>
           {ROLES.map(r => (
             <button
               key={r.id}
@@ -211,21 +187,21 @@ function StepOne({ data, update }: { data: OnboardingData; update: (p: Partial<O
               onClick={() => update({ role: r.id })}
             >
               <span style={{
-                width: "32px", height: "32px", borderRadius: "8px", flexShrink: 0,
-                background: data.role === r.id ? "rgba(200,168,75,0.2)" : "rgba(255,255,255,0.05)",
-                border: data.role === r.id ? "1px solid rgba(200,168,75,0.4)" : "1px solid rgba(255,255,255,0.08)",
+                width: "30px", height: "30px", borderRadius: "7px", flexShrink: 0,
+                background: data.role === r.id ? "rgba(152,118,26,0.12)" : "var(--cream)",
+                border: data.role === r.id ? "1px solid var(--accent-gold)" : "1px solid var(--border-light)",
                 display: "flex", alignItems: "center", justifyContent: "center",
-                fontFamily: "var(--font-mono)", fontSize: "0.62rem", fontWeight: 700,
-                color: data.role === r.id ? "#c8a84b" : "rgba(255,255,255,0.3)",
+                fontFamily: "var(--font-mono)", fontSize: "0.6rem", fontWeight: 700,
+                color: data.role === r.id ? "var(--accent-gold)" : "var(--text-dim)",
                 transition: "all 0.15s",
               }}>
                 {r.badge}
               </span>
               <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 600, fontSize: "0.92rem" }}>{r.label}</div>
-                <div style={{ fontSize: "0.78rem", opacity: 0.5, marginTop: "1px" }}>{r.desc}</div>
+                <div style={{ fontWeight: 600, fontSize: "0.9rem", color: "var(--ink)" }}>{r.label}</div>
+                <div style={{ fontSize: "0.75rem", color: "var(--text-dim)", marginTop: "1px" }}>{r.desc}</div>
               </div>
-              {data.role === r.id && <Check size={14} color="#c8a84b" />}
+              {data.role === r.id && <Check size={14} color="var(--accent-gold)" />}
             </button>
           ))}
         </div>
@@ -255,16 +231,16 @@ function StepOne({ data, update }: { data: OnboardingData; update: (p: Partial<O
 // ----- STEP 2: Tech Stack -----
 function StepTwo({ data, update }: { data: OnboardingData; update: (p: Partial<OnboardingData>) => void }) {
   return (
-    <div className="onboarding-step" style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+    <div className="onboarding-step" style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
       <div>
         <p className="onboarding-section-label">Your core tech stack</p>
-        <p style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.28)", marginBottom: "14px", fontFamily: "var(--font-mono)" }}>
+        <p style={{ fontSize: "0.75rem", color: "var(--text-dim)", marginBottom: "12px", fontFamily: "var(--font-mono)" }}>
           Click all that apply — we match these against real engineering gaps at target companies
         </p>
-        <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
           {TECH_GROUPS.map(group => (
             <div key={group.label}>
-              <div style={{ fontSize: "0.65rem", color: "rgba(255,255,255,0.22)", fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "8px" }}>
+              <div style={{ fontSize: "0.65rem", color: "var(--text-dim)", fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "7px" }}>
                 {group.label}
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
@@ -279,7 +255,7 @@ function StepTwo({ data, update }: { data: OnboardingData; update: (p: Partial<O
 
       <div>
         <p className="onboarding-section-label">Domains you know best</p>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "7px" }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
           {DOMAINS.map(d => (
             <Chip key={d} label={d} selected={data.domains.includes(d)} onClick={() => update({ domains: toggle(data.domains, d) })} />
           ))}
@@ -291,17 +267,8 @@ function StepTwo({ data, update }: { data: OnboardingData; update: (p: Partial<O
 
 // ----- STEP 3: Signal -----
 function StepThree({ data, update }: { data: OnboardingData; update: (p: Partial<OnboardingData>) => void }) {
-  const handleFocus = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    e.target.style.borderColor = "#c8a84b";
-    e.target.style.boxShadow = "0 0 0 2px rgba(200,168,75,0.12)";
-  };
-  const handleBlur = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    e.target.style.borderColor = "rgba(255,255,255,0.1)";
-    e.target.style.boxShadow = "none";
-  };
-
   return (
-    <div className="onboarding-step" style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+    <div className="onboarding-step" style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
       <div>
         <label className="onboarding-input-label">GitHub URL — optional, shows your real work</label>
         <input
@@ -310,8 +277,6 @@ function StepThree({ data, update }: { data: OnboardingData; update: (p: Partial
           placeholder="https://github.com/yourhandle"
           value={data.github_url}
           onChange={e => update({ github_url: e.target.value })}
-          onFocus={handleFocus} onBlur={handleBlur}
-          style={INPUT_STYLE}
         />
       </div>
 
@@ -323,14 +288,13 @@ function StepThree({ data, update }: { data: OnboardingData; update: (p: Partial
           placeholder='e.g. "Built a real-time webhook debugger for Stripe integrations using React + Supabase. 40+ GitHub stars."'
           value={data.project_summary}
           onChange={e => update({ project_summary: e.target.value })}
-          onFocus={handleFocus} onBlur={handleBlur}
-          style={{ ...INPUT_STYLE, resize: "vertical", lineHeight: 1.5 }}
+          style={{ resize: "vertical", lineHeight: 1.5 }}
         />
       </div>
 
       <div>
         <p className="onboarding-section-label">Target company investors</p>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "7px" }}>
           {INVESTORS.map(inv => (
             <Pill
               key={inv.id}
@@ -344,7 +308,7 @@ function StepThree({ data, update }: { data: OnboardingData; update: (p: Partial
 
       <div>
         <p className="onboarding-section-label">What matters to you in a company?</p>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "7px" }}>
           {VALUES.map(v => (
             <Chip
               key={v.id}
@@ -389,10 +353,10 @@ export function OnboardingWizard({ userName = "", onComplete }: OnboardingWizard
   };
 
   const stepHeadlines = [
-    <span key="s0">Tell us <em style={{ fontStyle: "italic", color: "#c8a84b" }}>about yourself.</em></span>,
-    <span key="s1">What kind of engineer <em style={{ fontStyle: "italic", color: "#c8a84b" }}>are you?</em></span>,
-    <span key="s2">{"What's in your "}<em style={{ fontStyle: "italic", color: "#c8a84b" }}>tech arsenal?</em></span>,
-    <span key="s3">Show us your <em style={{ fontStyle: "italic", color: "#c8a84b" }}>signal.</em></span>,
+    <span key="s0">Tell us <em>about yourself.</em></span>,
+    <span key="s1">What kind of engineer <em>are you?</em></span>,
+    <span key="s2">{"What's in your "}<em>tech arsenal?</em></span>,
+    <span key="s3">Show us your <em>signal.</em></span>,
   ];
 
   const stepSubs = [
@@ -406,45 +370,52 @@ export function OnboardingWizard({ userName = "", onComplete }: OnboardingWizard
     <div className="wizard-card">
       {/* Header */}
       <div style={{ padding: "28px 32px 0" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "24px" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "20px" }}>
+          {/* Logo */}
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
             <div style={{
-              width: "28px", height: "28px", borderRadius: "7px",
-              background: "linear-gradient(135deg, #c8a84b, #8b6020)",
-              display: "flex", alignItems: "center", justifyContent: "center"
+              width: "26px", height: "26px", borderRadius: "6px",
+              background: "var(--ink)",
+              display: "flex", alignItems: "center", justifyContent: "center",
             }}>
-              <Zap size={14} color="#0a0a0a" fill="#0a0a0a" />
+              <Zap size={13} color="var(--cream)" fill="var(--cream)" />
             </div>
-            <span style={{ fontFamily: "var(--font-serif)", fontSize: "1.1rem", color: "rgba(255,255,255,0.85)", letterSpacing: "-0.02em" }}>
+            <span style={{ fontFamily: "var(--font-serif)", fontSize: "1.05rem", color: "var(--ink)", letterSpacing: "-0.02em" }}>
               SideDoor
             </span>
           </div>
-          <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.72rem", color: "rgba(255,255,255,0.25)", letterSpacing: "0.06em" }}>
+          {/* Step counter */}
+          <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.7rem", color: "var(--text-dim)", letterSpacing: "0.06em" }}>
             STEP {step + 1} OF {STEPS.length}
           </span>
         </div>
 
         {/* Progress bar */}
-        <div className="onboarding-progress-track" style={{ marginBottom: "28px" }}>
+        <div className="onboarding-progress-track" style={{ marginBottom: "24px" }}>
           <div className="onboarding-progress-fill" style={{ width: `${progress}%` }} />
         </div>
 
         {/* Step headline */}
-        <div style={{ marginBottom: "24px" }}>
+        <div style={{ marginBottom: "20px" }}>
           <h2 style={{
-            margin: 0, fontSize: "1.55rem", fontFamily: "var(--font-serif)",
-            color: "rgba(255,255,255,0.92)", fontWeight: 500, letterSpacing: "-0.02em", lineHeight: 1.25
+            margin: 0,
+            fontSize: "1.45rem",
+            fontFamily: "var(--font-serif)",
+            color: "var(--ink)",
+            fontWeight: 500,
+            letterSpacing: "-0.025em",
+            lineHeight: 1.25,
           }}>
             {stepHeadlines[step]}
           </h2>
-          <p style={{ margin: "8px 0 0", fontSize: "0.82rem", color: "rgba(255,255,255,0.28)", fontFamily: "var(--font-mono)" }}>
+          <p style={{ margin: "6px 0 0", fontSize: "0.8rem", color: "var(--text-dim)", fontFamily: "var(--font-mono)" }}>
             {stepSubs[step]}
           </p>
         </div>
       </div>
 
-      {/* Step content */}
-      <div style={{ padding: "0 32px" }}>
+      {/* Step content — scrollable */}
+      <div style={{ padding: "0 32px", maxHeight: "420px", overflowY: "auto" }}>
         {step === 0 && <StepZero name={name} location={location} userType={userType} onName={setName} onLocation={setLocation} onUserType={setUserType} />}
         {step === 1 && <StepOne data={data} update={update} />}
         {step === 2 && <StepTwo data={data} update={update} />}
@@ -452,33 +423,45 @@ export function OnboardingWizard({ userName = "", onComplete }: OnboardingWizard
       </div>
 
       {/* Footer nav */}
-      <div style={{ padding: "24px 32px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "16px" }}>
+      <div style={{
+        padding: "20px 32px 16px",
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        marginTop: "16px",
+        borderTop: "1px solid var(--border-light)",
+      }}>
         {step > 0 ? (
           <button className="onboarding-btn-ghost" onClick={() => setStep(s => s - 1)}>
-            <ArrowLeft size={15} /> Back
+            <ArrowLeft size={14} /> Back
           </button>
         ) : <div />}
 
         {step < STEPS.length - 1 ? (
           <button className="onboarding-btn-primary" disabled={!canContinue} onClick={() => setStep(s => s + 1)}>
-            Continue <ArrowRight size={15} />
+            Continue <ArrowRight size={14} />
           </button>
         ) : (
           <button className="onboarding-btn-primary" disabled={isSubmitting} onClick={handleFinish}>
             {isSubmitting ? "Building your feed..." : "Find My Opportunities"}
-            {!isSubmitting && <ArrowRight size={15} />}
+            {!isSubmitting && <ArrowRight size={14} />}
           </button>
         )}
       </div>
 
       {/* Skip */}
-      <div style={{ textAlign: "center", paddingBottom: "24px" }}>
+      <div style={{ textAlign: "center", paddingBottom: "20px" }}>
         <button
           onClick={() => onComplete({ ...EMPTY_DATA, name, location, user_type: userType })}
           style={{
-            background: "none", border: "none", color: "rgba(255,255,255,0.2)",
-            fontSize: "0.75rem", cursor: "pointer", fontFamily: "var(--font-mono)",
-            textDecoration: "underline", textUnderlineOffset: "2px"
+            background: "none",
+            border: "none",
+            color: "var(--text-dim)",
+            fontSize: "0.75rem",
+            cursor: "pointer",
+            fontFamily: "var(--font-mono)",
+            textDecoration: "underline",
+            textUnderlineOffset: "2px",
           }}
         >
           Skip for now — fill this in later

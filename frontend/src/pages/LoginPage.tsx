@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { ArrowRight, AlertCircle, Zap, Shield } from "lucide-react";
+import { ArrowRight, AlertCircle, Shield, Zap, Check } from "lucide-react";
 import { supabase } from "../lib/supabase";
 
 interface LoginPageProps {
@@ -7,21 +7,13 @@ interface LoginPageProps {
 }
 
 export function LoginPage({ onBackToLanding }: LoginPageProps) {
-  const [name, setName]                 = useState("");
-  const [email, setEmail]               = useState("");
-  const [password, setPassword]         = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [name, setName]                   = useState("");
+  const [email, setEmail]                 = useState("");
+  const [password, setPassword]           = useState("");
+  const [isSubmitting, setIsSubmitting]   = useState(false);
+  const [errorMessage, setErrorMessage]   = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [mode, setMode]                 = useState<"detect" | "signin" | "signup">("detect");
-
-  const handleEmailBlur = async () => {
-    if (!email.includes("@") || !email.includes(".")) return;
-    // Try to determine if user exists by attempting sign-in with dummy password
-    // We use mode state rather than an API check — user explicitly picks sign in vs sign up
-    // Default to signin mode once email looks valid
-    if (mode === "detect") setMode("signin");
-  };
+  const [mode, setMode]                   = useState<"signin" | "signup">("signin");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,7 +29,6 @@ export function LoginPage({ onBackToLanding }: LoginPageProps) {
 
     try {
       if (mode === "signup") {
-        // --- SIGN UP via Supabase ---
         if (!name.trim()) {
           setErrorMessage("Please enter your name to create an account.");
           setIsSubmitting(false);
@@ -46,28 +37,22 @@ export function LoginPage({ onBackToLanding }: LoginPageProps) {
         const { error } = await supabase.auth.signUp({
           email: email.trim(),
           password,
-          options: {
-            data: { name: name.trim() },
-          },
+          options: { data: { name: name.trim() } },
         });
         if (error) throw error;
-        // If email confirmation is enabled, show a message; otherwise onAuthStateChange fires
         setSuccessMessage("Account created! Check your inbox to verify your email, then sign in.");
       } else {
-        // --- SIGN IN via Supabase ---
         const { error } = await supabase.auth.signInWithPassword({
           email: email.trim(),
           password,
         });
         if (error) {
-          // If invalid credentials — suggest sign up
           if (error.message.toLowerCase().includes("invalid login credentials")) {
-            setErrorMessage("No account found with this email. Switch to 'Create Account' below, or double-check your password.");
+            setErrorMessage("No account found, or wrong password. Try again or create an account below.");
           } else {
             throw error;
           }
         }
-        // On success, onAuthStateChange in useAuth fires → App.tsx navigates automatically
       }
     } catch (error: any) {
       setErrorMessage(error.message || "Authentication failed. Please try again.");
@@ -76,102 +61,159 @@ export function LoginPage({ onBackToLanding }: LoginPageProps) {
     }
   };
 
-  const INPUT_STYLE: React.CSSProperties = {
-    width: "100%", padding: "13px 16px", borderRadius: "10px",
-    border: "1px solid rgba(255,255,255,0.1)",
-    background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.88)",
-    fontSize: "0.95rem", outline: "none",
-    transition: "border-color 0.2s, box-shadow 0.2s",
+  const INPUT_BASE: React.CSSProperties = {
+    width: "100%",
+    padding: "12px 14px",
+    borderRadius: "10px",
+    border: "1px solid var(--border)",
+    background: "var(--paper)",
+    color: "var(--ink)",
+    fontSize: "0.95rem",
     fontFamily: "var(--font-sans)",
+    outline: "none",
+    transition: "border-color 0.2s, box-shadow 0.2s",
     boxSizing: "border-box",
   };
 
-  const LABEL_STYLE: React.CSSProperties = {
-    fontSize: "0.72rem", color: "rgba(255,255,255,0.3)", fontWeight: 700,
-    display: "block", marginBottom: "6px", textTransform: "uppercase",
-    letterSpacing: "0.08em", fontFamily: "var(--font-mono)",
+  const LABEL_BASE: React.CSSProperties = {
+    display: "block",
+    fontSize: "0.72rem",
+    fontFamily: "var(--font-mono)",
+    fontWeight: 700,
+    textTransform: "uppercase",
+    letterSpacing: "0.08em",
+    color: "var(--text-dim)",
+    marginBottom: "6px",
   };
 
-  const handleFocus = (e: React.FocusEvent<HTMLInputElement>) => {
-    e.target.style.borderColor = "#c8a84b";
-    e.target.style.boxShadow = "0 0 0 2px rgba(200,168,75,0.12)";
+  const onFocus = (e: React.FocusEvent<HTMLInputElement>) => {
+    e.target.style.borderColor = "var(--accent-gold)";
+    e.target.style.boxShadow = "0 0 0 3px rgba(152,118,26,0.1)";
   };
-  const handleBlur = (e: React.FocusEvent<HTMLInputElement>) => {
-    e.target.style.borderColor = "rgba(255,255,255,0.1)";
+  const onBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    e.target.style.borderColor = "var(--border)";
     e.target.style.boxShadow = "none";
   };
 
-  const headlineSubtitle = mode === "signup"
-    ? "Create your account in seconds."
-    : "Welcome back. Enter your password to continue.";
-
-  const ctaLabel = mode === "signup" ? "Create Account" : "Sign In";
+  const TRUST_ITEMS = [
+    "No LinkedIn scraping",
+    "No spam",
+    "Your data is private",
+  ];
 
   return (
-    <div style={{
-      minHeight: "100vh", background: "#080808",
-      display: "flex", alignItems: "center", justifyContent: "center",
-      padding: "24px", position: "relative", overflow: "hidden",
-    }}>
-      {/* Grid background */}
-      <div style={{
-        position: "absolute", inset: 0, pointerEvents: "none",
-        backgroundImage: "linear-gradient(rgba(200,168,75,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(200,168,75,0.03) 1px, transparent 1px)",
-        backgroundSize: "48px 48px",
-      }} />
-      {/* Radial glow */}
-      <div style={{
-        position: "absolute", top: "30%", left: "50%", transform: "translate(-50%, -50%)",
-        width: "600px", height: "600px", borderRadius: "50%",
-        background: "radial-gradient(circle, rgba(200,168,75,0.05) 0%, transparent 70%)",
-        pointerEvents: "none",
-      }} />
+    <div
+      className="bg-texture"
+      style={{
+        minHeight: "100vh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "40px 24px",
+      }}
+    >
+      <div style={{ width: "100%", maxWidth: "440px" }}>
 
-      <div style={{ width: "100%", maxWidth: "420px", position: "relative", zIndex: 1 }}>
-        {/* Logo */}
+        {/* Logo / wordmark */}
         <div
           onClick={onBackToLanding}
-          style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", marginBottom: "36px", justifyContent: "center" }}
+          style={{
+            display: "flex", alignItems: "center", gap: "10px",
+            cursor: "pointer", marginBottom: "40px", justifyContent: "center",
+          }}
         >
           <div style={{
-            width: "34px", height: "34px", borderRadius: "9px",
-            background: "linear-gradient(135deg, #c8a84b, #8b6020)",
-            display: "flex", alignItems: "center", justifyContent: "center"
+            width: "32px", height: "32px", borderRadius: "8px",
+            background: "var(--ink)",
+            display: "flex", alignItems: "center", justifyContent: "center",
           }}>
-            <Zap size={16} color="#0a0a0a" fill="#0a0a0a" />
+            <Zap size={15} color="var(--cream)" fill="var(--cream)" />
           </div>
-          <span style={{ fontFamily: "var(--font-serif)", fontSize: "1.5rem", fontWeight: 500, color: "rgba(255,255,255,0.88)", letterSpacing: "-0.02em" }}>
+          <span style={{
+            fontFamily: "var(--font-serif)",
+            fontSize: "1.5rem",
+            fontWeight: 500,
+            color: "var(--ink)",
+            letterSpacing: "-0.025em",
+          }}>
             SideDoor
           </span>
         </div>
 
         {/* Card */}
-        <div style={{
-          background: "#111111", border: "1px solid rgba(255,255,255,0.07)",
-          borderRadius: "24px", padding: "36px",
-          boxShadow: "0 40px 100px rgba(0,0,0,0.7), 0 0 0 1px rgba(200,168,75,0.04) inset",
-        }}>
+        <div
+          className="paper-card"
+          style={{ padding: "36px", borderRadius: "20px" }}
+        >
           {/* Headline */}
-          <div style={{ textAlign: "center", marginBottom: "32px" }}>
+          <div style={{ textAlign: "center", marginBottom: "28px" }}>
             <h2 style={{
-              fontFamily: "var(--font-serif)", fontSize: "1.65rem", fontWeight: 500,
-              color: "rgba(255,255,255,0.92)", margin: "0 0 8px", letterSpacing: "-0.02em", lineHeight: 1.2
+              fontFamily: "var(--font-serif)",
+              fontSize: "1.6rem",
+              fontWeight: 500,
+              color: "var(--ink)",
+              margin: "0 0 8px",
+              letterSpacing: "-0.025em",
+              lineHeight: 1.25,
             }}>
-              The unfair advantage<br />
-              <em style={{ fontStyle: "italic", color: "#c8a84b" }}>for product engineers</em>
+              {mode === "signup"
+                ? <>Create your <em>account</em></>
+                : <>Welcome <em>back.</em></>
+              }
             </h2>
-            <p style={{ margin: 0, fontSize: "0.82rem", color: "rgba(255,255,255,0.28)", fontFamily: "var(--font-mono)", lineHeight: 1.5 }}>
-              {headlineSubtitle}
+            <p style={{
+              margin: 0,
+              fontSize: "0.85rem",
+              color: "var(--text-dim)",
+              fontFamily: "var(--font-mono)",
+            }}>
+              {mode === "signup"
+                ? "Find your unfair advantage in the job market."
+                : "Sign in to access your opportunity feed."}
             </p>
+          </div>
+
+          {/* Mode toggle pills */}
+          <div style={{
+            display: "flex",
+            background: "var(--bg)",
+            borderRadius: "10px",
+            padding: "4px",
+            marginBottom: "24px",
+            border: "1px solid var(--border-light)",
+          }}>
+            {(["signin", "signup"] as const).map(m => (
+              <button
+                key={m}
+                onClick={() => { setMode(m); setErrorMessage(null); setSuccessMessage(null); }}
+                style={{
+                  flex: 1,
+                  padding: "8px 12px",
+                  borderRadius: "8px",
+                  fontSize: "0.85rem",
+                  fontWeight: 600,
+                  fontFamily: "var(--font-sans)",
+                  cursor: "pointer",
+                  border: "none",
+                  transition: "all 0.15s",
+                  background: mode === m ? "var(--paper)" : "transparent",
+                  color: mode === m ? "var(--ink)" : "var(--text-dim)",
+                  boxShadow: mode === m ? "0 1px 4px rgba(42,46,28,0.08)" : "none",
+                }}
+              >
+                {m === "signin" ? "Sign In" : "Create Account"}
+              </button>
+            ))}
           </div>
 
           {/* Error */}
           {errorMessage && (
             <div style={{
               display: "flex", alignItems: "flex-start", gap: "10px",
-              background: "rgba(217,119,87,0.08)", border: "1px solid rgba(217,119,87,0.18)",
+              background: "rgba(242,102,37,0.08)",
+              border: "1px solid rgba(242,102,37,0.25)",
               borderRadius: "10px", padding: "12px 14px", marginBottom: "20px",
-              color: "#e07040", fontSize: "0.83rem", lineHeight: 1.45,
+              color: "#c0440e", fontSize: "0.83rem", lineHeight: 1.45,
             }}>
               <AlertCircle size={15} style={{ flexShrink: 0, marginTop: "2px" }} />
               <span>{errorMessage}</span>
@@ -182,93 +224,109 @@ export function LoginPage({ onBackToLanding }: LoginPageProps) {
           {successMessage && (
             <div style={{
               display: "flex", alignItems: "flex-start", gap: "10px",
-              background: "rgba(74,197,130,0.08)", border: "1px solid rgba(74,197,130,0.25)",
+              background: "rgba(108,115,57,0.08)",
+              border: "1px solid rgba(108,115,57,0.3)",
               borderRadius: "10px", padding: "12px 14px", marginBottom: "20px",
-              color: "#4ac582", fontSize: "0.83rem", lineHeight: 1.45,
+              color: "var(--accent-moss)", fontSize: "0.83rem", lineHeight: 1.45,
             }}>
+              <Check size={15} style={{ flexShrink: 0, marginTop: "2px" }} />
               <span>{successMessage}</span>
             </div>
           )}
 
-          <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "18px" }}>
-            {/* Name — shown for sign up */}
+          {/* Form */}
+          <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+
+            {/* Name - signup only */}
             {mode === "signup" && (
-              <div style={{ animation: "stepIn 0.3s ease both" }}>
-                <label style={LABEL_STYLE}>Your Name</label>
+              <div>
+                <label style={LABEL_BASE}>Full Name</label>
                 <input
-                  type="text" placeholder="e.g. Arjun Sharma"
-                  value={name} onChange={e => setName(e.target.value)}
-                  onFocus={handleFocus} onBlur={handleBlur} style={INPUT_STYLE}
+                  type="text"
+                  placeholder="e.g. Arjun Mehta"
+                  value={name}
+                  onChange={e => setName(e.target.value)}
+                  onFocus={onFocus} onBlur={onBlur}
+                  style={INPUT_BASE}
                 />
               </div>
             )}
 
             {/* Email */}
             <div>
-              <label style={LABEL_STYLE}>Email Address</label>
+              <label style={LABEL_BASE}>Email Address</label>
               <input
-                type="email" required placeholder="you@startup.com"
-                value={email} onChange={e => setEmail(e.target.value)}
-                onFocus={handleFocus}
-                onBlur={(e) => { handleBlur(e); handleEmailBlur(); }}
-                style={INPUT_STYLE}
+                type="email"
+                required
+                placeholder="you@startup.com"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                onFocus={onFocus} onBlur={onBlur}
+                style={INPUT_BASE}
               />
             </div>
 
             {/* Password */}
             <div>
-              <label style={LABEL_STYLE}>Password</label>
+              <label style={LABEL_BASE}>Password</label>
               <input
-                type="password" required placeholder={mode === "signup" ? "Choose a strong password" : "Enter your password"}
-                value={password} onChange={e => setPassword(e.target.value)}
-                onFocus={handleFocus} onBlur={handleBlur} style={INPUT_STYLE}
+                type="password"
+                required
+                placeholder={mode === "signup" ? "Choose a strong password" : "Enter your password"}
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                onFocus={onFocus} onBlur={onBlur}
+                style={INPUT_BASE}
               />
             </div>
 
             {/* CTA */}
             <button
-              type="submit" disabled={isSubmitting}
-              className="onboarding-btn-primary"
-              style={{ width: "100%", marginTop: "4px" }}
+              type="submit"
+              disabled={isSubmitting}
+              className="btn-primary"
+              style={{ width: "100%", marginTop: "4px", fontSize: "0.95rem", padding: "13px 20px" }}
             >
-              {isSubmitting ? "Please wait..." : ctaLabel}
+              {isSubmitting
+                ? "Please wait..."
+                : mode === "signup" ? "Create Account" : "Sign In"
+              }
               {!isSubmitting && <ArrowRight size={16} />}
             </button>
           </form>
 
-          {/* Toggle mode */}
-          <div style={{ textAlign: "center", marginTop: "20px" }}>
-            {mode === "signup" ? (
-              <button
-                onClick={() => { setMode("signin"); setErrorMessage(null); }}
-                style={{ background: "none", border: "none", color: "rgba(255,255,255,0.28)", fontSize: "0.8rem", cursor: "pointer", fontFamily: "var(--font-mono)" }}
-              >
-                Already have an account?{" "}
-                <span style={{ color: "#c8a84b", fontWeight: 600 }}>Sign in</span>
-              </button>
-            ) : (
-              <button
-                onClick={() => { setMode("signup"); setErrorMessage(null); }}
-                style={{ background: "none", border: "none", color: "rgba(255,255,255,0.28)", fontSize: "0.8rem", cursor: "pointer", fontFamily: "var(--font-mono)" }}
-              >
-                No account yet?{" "}
-                <span style={{ color: "#c8a84b", fontWeight: 600 }}>Create one</span>
-              </button>
-            )}
-          </div>
-
           {/* Trust line */}
-          <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "6px", marginTop: "16px", fontSize: "0.75rem", color: "rgba(255,255,255,0.18)", fontFamily: "var(--font-mono)" }}>
-            <Shield size={12} />
-            <span>No spam · No LinkedIn scraping · Your data stays private</span>
+          <div style={{
+            display: "flex", justifyContent: "center", alignItems: "center",
+            gap: "16px", marginTop: "20px", flexWrap: "wrap",
+          }}>
+            {TRUST_ITEMS.map(t => (
+              <span key={t} style={{
+                display: "flex", alignItems: "center", gap: "4px",
+                fontSize: "0.72rem", fontFamily: "var(--font-mono)",
+                color: "var(--text-dim)",
+              }}>
+                <Shield size={10} color="var(--accent-moss)" />
+                {t}
+              </span>
+            ))}
           </div>
         </div>
 
-        {/* Back */}
+        {/* Back link */}
         <div style={{ textAlign: "center", marginTop: "20px" }}>
           <button
             onClick={onBackToLanding}
-            style={{ background: "none", border: "none", color: "rgba(255,255,255,0.25)", fontSize: "0.8rem", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "4px", fontFamily: "var(--font-mono)" }}
+            style={{
+              background: "none",
+              border: "none",
+              color: "var(--text-dim)",
+              fontSize: "0.82rem",
+              cursor: "pointer",
+              fontFamily: "var(--font-mono)",
+              textDecoration: "underline",
+              textUnderlineOffset: "2px",
+            }}
           >
             ← Back to landing
           </button>
