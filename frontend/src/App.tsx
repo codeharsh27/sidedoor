@@ -32,21 +32,17 @@ export function App() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  // Redirect authenticated users away from /login
+  // Redirect authenticated users who haven't completed onboarding to /onboarding
   useEffect(() => {
-    if (!loading && user && location.pathname === "/login") {
-      if (!hasCompletedOnboarding(user)) {
-        navigate("/onboarding");
-      } else {
-        navigate("/dashboard");
-      }
+    if (!loading && user && !hasCompletedOnboarding(user) && location.pathname !== "/onboarding") {
+      navigate("/onboarding");
     }
   }, [user, loading, location.pathname, navigate]);
 
-  // Redirect authenticated users with no profile away from /dashboard
+  // Redirect authenticated users who have completed onboarding away from /onboarding and /login
   useEffect(() => {
-    if (!loading && user && location.pathname === "/dashboard" && !hasCompletedOnboarding(user)) {
-      navigate("/onboarding");
+    if (!loading && user && hasCompletedOnboarding(user) && (location.pathname === "/onboarding" || location.pathname === "/login")) {
+      navigate("/dashboard");
     }
   }, [user, loading, location.pathname, navigate]);
 
@@ -57,13 +53,13 @@ export function App() {
   if (loading) {
     return (
       <div style={{
-        minHeight: "100vh", background: "#080808",
+        minHeight: "100vh", background: "#f0eadb",
         display: "flex", alignItems: "center", justifyContent: "center",
       }}>
         <div style={{
           width: "32px", height: "32px", borderRadius: "50%",
-          border: "2px solid rgba(200,168,75,0.2)",
-          borderTopColor: "#c8a84b",
+          border: "2px solid rgba(152,118,26,0.2)",
+          borderTopColor: "#98761a",
           animation: "spin 0.8s linear infinite",
         }} />
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
