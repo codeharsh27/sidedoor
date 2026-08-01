@@ -39,6 +39,7 @@ from app.services.resume_parser import (
     NotableProject,
     ProfileData,
     ResumeParseError,
+    ResumeParserProtocol,
 )
 from app.services.security import (
     InvalidURLError,
@@ -108,14 +109,26 @@ class ProfileParseURLRequest(BaseModel):
 # ---------- Parser dependency ----------
 
 
-def get_resume_parser() -> GeminiResumeParser:
-    """FastAPI dependency that provides the resume parser."""
-    if not settings.gemini_api_key:
-        raise HTTPException(
-            status_code=503,
-            detail="Resume parsing is not configured: missing GEMINI_API_KEY.",
+def get_resume_parser() -> ResumeParserProtocol:
+    """
+    FastAPI dependency that provides the appropriate resume parser:
+    - OpenRouter (if OPENROUTER_API_KEY is configured)
+    - Gemini (if GEMINI_API_KEY is configured)
+    - Fallback heuristic parser (if no LLM keys are configured)
+    """
+    from app.services.resume_parser import OpenRouterResumeParser, FallbackResumeParser
+
+    if settings.openrouter_api_key:
+        return OpenRouterResumeParser(
+            api_key=settings.openrouter_api_key,
+            model_name=settings.openrouter_model or "google/gemini-2.0-flash-001"
         )
-    return GeminiResumeParser(api_key=settings.gemini_api_key)
+
+    if settings.gemini_api_key:
+        return GeminiResumeParser(api_key=settings.gemini_api_key)
+
+    # Fall back to heuristic rule-based parser so upload never fails
+    return FallbackResumeParser()
 
 
 # ---------- Shared pipeline logic ----------
@@ -147,7 +160,7 @@ async def _run_parse_pipeline(
     extraction: ExtractionResult,
     user_id: uuid.UUID,
     session: AsyncSession,
-    parser: GeminiResumeParser,
+    parser: ResumeParserProtocol,
 ) -> ProfileParseResponse:
     """
     Core pipeline: extracted text → LLM parse → embed → upsert profile.
@@ -240,7 +253,7 @@ async def parse_resume_file(
     user_id: str = Form(...),
     file: UploadFile = File(...),
     session: AsyncSession = Depends(get_db_session),
-    parser: GeminiResumeParser = Depends(get_resume_parser),
+    parser: ResumeParserProtocol = Depends(get_resume_parser),
 ) -> ProfileParseResponse:
     """
     Parse a resume file upload (PDF or DOCX).
@@ -271,7 +284,7 @@ async def parse_resume_file(
 async def parse_resume_text(
     request: ProfileParseTextRequest,
     session: AsyncSession = Depends(get_db_session),
-    parser: GeminiResumeParser = Depends(get_resume_parser),
+    parser: ResumeParserProtocol = Depends(get_resume_parser),
 ) -> ProfileParseResponse:
     """
     Parse raw resume text (pasted directly).
@@ -293,7 +306,7 @@ async def parse_resume_text(
 async def parse_portfolio_url(
     request: ProfileParseURLRequest,
     session: AsyncSession = Depends(get_db_session),
-    parser: GeminiResumeParser = Depends(get_resume_parser),
+    parser: ResumeParserProtocol = Depends(get_resume_parser),
 ) -> ProfileParseResponse:
     """
     Parse a portfolio URL (GitHub profile, personal site, etc.).
@@ -327,7 +340,7 @@ async def upload_profile(
     file: UploadFile | None = File(None),
     raw_text: str | None = Form(None),
     session: AsyncSession = Depends(get_db_session),
-    parser: GeminiResumeParser = Depends(get_resume_parser),
+    parser: ResumeParserProtocol = Depends(get_resume_parser),
 ) -> ProfileUploadResponse:
     """
     Ingest a user profile by file upload or raw text.
@@ -436,4 +449,193 @@ async def upload_profile(
             updated_at=profile.updated_at.isoformat() if profile.updated_at else datetime.now(timezone.utc).isoformat(),
         ),
     )
+
+
+# ---------- New Normalized Onboarding & Parsing Endpoints ----------
+
+class OnboardingSkillRequest(BaseModel):
+    skill: str
+    source: str = "resume"
+    confidence: float = 1.0
+
+
+class OnboardingProjectRequest(BaseModel):
+    name: str
+    description: str | None = None
+    stack: list[str] = Field(default_factory=list)
+    status: str = "built"
+    is_production: bool = False
+
+
+class OnboardingPreferencesRequest(BaseModel):
+    target_roles: list[str] = Field(default_factory=list)
+    company_stage: list[str] = Field(default_factory=list)
+    industries: list[str] = Field(default_factory=list)
+    location_pref: list[str] | str = Field(default_factory=lambda: ["remote"])
+    comp_floor: str | None = None
+
+
+class OnboardingRequest(BaseModel):
+    user_id: str
+    email: str | None = None
+    name: str | None = None
+    location: str | None = None
+    years_experience: str | None = None
+    current_role: str | None = None
+    skills: list[OnboardingSkillRequest] = Field(default_factory=list)
+    projects: list[OnboardingProjectRequest] = Field(default_factory=list)
+    preferences: OnboardingPreferencesRequest
+
+
+@router.post("/parse-resume")
+async def parse_resume_preview(
+    file: UploadFile | None = File(None),
+    raw_text: str | None = Form(None),
+    parser: ResumeParserProtocol = Depends(get_resume_parser),
+):
+    """
+    Parse uploaded resume file (PDF/DOCX) or text and return JSON preview.
+    Does NOT force a database write — allows user verification step in UI.
+    """
+    if file and file.filename:
+        file_bytes = await file.read()
+        try:
+            extraction = extract_from_file(file_bytes, file.content_type, file.filename)
+        except DocumentExtractionError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+    elif raw_text and raw_text.strip():
+        try:
+            extraction = extract_from_text(raw_text)
+        except DocumentExtractionError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+    else:
+        raise HTTPException(status_code=400, detail="Provide a file or raw_text to parse.")
+
+    try:
+        parsed: ProfileData = await parser.parse_resume(extraction.raw_text)
+    except ResumeParseError as e:
+        raise HTTPException(status_code=422, detail=f"Resume parsing failed: {e}")
+
+    # Build fallback projects list from notable_projects if empty
+    projects_list = [p.model_dump() for p in parsed.projects]
+    if not projects_list and parsed.notable_projects:
+        projects_list = [
+            {
+                "name": np.title,
+                "description": np.description,
+                "stack": np.tech_used,
+                "status": "built",
+                "is_production": False,
+            }
+            for np in parsed.notable_projects
+        ]
+
+    return {
+        "name": parsed.name,
+        "skills": parsed.skills,
+        "domains": parsed.domains,
+        "projects": projects_list,
+        "experience": [e.model_dump() for e in parsed.experience],
+    }
+
+
+@router.post("/onboarding")
+async def submit_user_onboarding(
+    payload: OnboardingRequest,
+    session: AsyncSession = Depends(get_db_session),
+):
+    """
+    Save complete user onboarding data to normalized tables:
+    users, user_skills, user_projects, user_preferences.
+    """
+    uid = _validate_user_id(payload.user_id)
+
+    # 1. Upsert User
+    user_res = await session.execute(select(User).where(User.id == uid))
+    user = user_res.scalar_one_or_none()
+
+    if user is None:
+        user = User(
+            id=uid,
+            email=payload.email or f"{uid}@sidedoor.internal",
+            name=payload.name,
+            location=payload.location,
+            years_experience=payload.years_experience,
+            current_role=payload.current_role,
+        )
+        session.add(user)
+    else:
+        if payload.name:
+            user.name = payload.name
+        if payload.location:
+            user.location = payload.location
+        if payload.years_experience:
+            user.years_experience = payload.years_experience
+        if payload.current_role:
+            user.current_role = payload.current_role
+
+    # 2. Replace UserSkills
+    from app.db.models import UserSkill, UserProject, UserPreference
+    from sqlalchemy import delete
+
+    await session.execute(delete(UserSkill).where(UserSkill.user_id == uid))
+    for s in payload.skills:
+        if s.skill and s.skill.strip():
+            session.add(
+                UserSkill(
+                    user_id=uid,
+                    skill=s.skill.strip(),
+                    source=s.source,
+                    confidence=s.confidence,
+                )
+            )
+
+    # 3. Replace UserProjects
+    await session.execute(delete(UserProject).where(UserProject.user_id == uid))
+    for p in payload.projects:
+        if p.name and p.name.strip():
+            session.add(
+                UserProject(
+                    user_id=uid,
+                    name=p.name.strip(),
+                    description=p.description,
+                    stack=p.stack,
+                    status=p.status,
+                    is_production=p.is_production,
+                )
+            )
+
+    # 4. Upsert UserPreferences
+    pref_res = await session.execute(
+        select(UserPreference).where(UserPreference.user_id == uid)
+    )
+    pref = pref_res.scalar_one_or_none()
+
+    loc_pref = payload.preferences.location_pref
+    if isinstance(loc_pref, str):
+        loc_pref = [loc_pref]
+
+    if pref is None:
+        session.add(
+            UserPreference(
+                user_id=uid,
+                target_roles=payload.preferences.target_roles,
+                company_stage=payload.preferences.company_stage,
+                industries=payload.preferences.industries,
+                location_pref=loc_pref,
+                comp_floor=payload.preferences.comp_floor,
+            )
+        )
+    else:
+        pref.target_roles = payload.preferences.target_roles
+        pref.company_stage = payload.preferences.company_stage
+        pref.industries = payload.preferences.industries
+        pref.location_pref = loc_pref
+        pref.comp_floor = payload.preferences.comp_floor
+
+    await session.commit()
+    logger.info("Successfully completed normalized onboarding for user %s", uid)
+
+    return {"status": "success", "user_id": str(uid)}
+
 

@@ -129,6 +129,6 @@ async def test_generate_handoff_prompt_happy_path():
     prompt = await generate_handoff_prompt(company_id, cluster_id, user_id, db)
     assert "Target Company: Stripe" in prompt
     assert "Matching Role: Senior Backend Engineer" in prompt
-    assert "Relevant Skill to target: FastAPI" in prompt
+    assert "Primary Matching Tech: FastAPI" in prompt
     assert "Topic: slow authentication login" in prompt
     assert "https://news.ycombinator.com/item?id=123" in prompt

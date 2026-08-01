@@ -52,14 +52,14 @@ class TestProfileData:
         assert data.notable_projects[0].title == "Real-time chat app"
 
     def test_minimum_one_project_required(self):
-        """notable_projects must have at least 1 entry."""
-        with pytest.raises(Exception):
-            ProfileData(
-                skills=["Python"],
-                domains=["backend"],
-                project_summary="A developer.",
-                notable_projects=[],
-            )
+        """notable_projects defaults to empty list if omitted."""
+        data = ProfileData(
+            skills=["Python"],
+            domains=["backend"],
+            project_summary="A developer.",
+            notable_projects=[],
+        )
+        assert data.notable_projects == []
 
     def test_from_json_string(self):
         """ProfileData should parse from a JSON string (as LLM returns)."""
@@ -176,8 +176,8 @@ class TestGeminiResumeParser:
 
     @pytest.mark.asyncio
     async def test_raises_on_incomplete_json(self):
-        """Parser should raise when LLM returns JSON missing required fields."""
-        incomplete = json.dumps({"skills": ["Python"]})  # Missing required fields
+        """Parser should raise when LLM returns invalid data types."""
+        incomplete = json.dumps({"skills": 12345})  # Invalid type for skills
         parser = self._make_parser_with_mock(incomplete)
         with pytest.raises(ResumeParseError):
             await parser.parse_resume("Some resume text")

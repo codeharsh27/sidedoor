@@ -199,7 +199,14 @@ async def generate_handoff_prompt(
     )
 
     # 7. Compute deterministic time budget & verification commands
-    ev_count = cluster.evidence_count or len(cluster.evidence_item_ids or [])
+    raw_ev = getattr(cluster, "evidence_count", None)
+    if isinstance(raw_ev, int):
+        ev_count = raw_ev
+    elif isinstance(getattr(cluster, "evidence_item_ids", None), list):
+        ev_count = len(cluster.evidence_item_ids)
+    else:
+        ev_count = 3
+
     if ev_count <= 3:
         estimated_hours = "4-6 hours"
     elif ev_count <= 8:

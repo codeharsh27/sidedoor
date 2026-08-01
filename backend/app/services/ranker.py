@@ -256,3 +256,58 @@ async def rank_clusters(company_id: object, db: AsyncSession) -> int:
         company_id,
     )
     return ranked_count
+
+
+def rank_by_fit(companies: list[dict], context: dict) -> list[dict]:
+    """
+    Score and rank companies against compact user context.
+
+    Scoring formula:
+      - 40% tech stack overlap with candidate skills
+      - 30% company funding stage match with user preferences
+      - 30% project relevance (stack match with key projects)
+
+    Args:
+        companies: List of company dictionaries containing 'tech_stack_tags', 'funding_stage', etc.
+        context: User context object from build_user_context().
+
+    Returns:
+        Sorted list of company objects with 'fit_score' attached.
+    """
+    candidate_stack = set(s.lower() for s in context.get("stack", []))
+    target_stages = set(s.lower() for s in context.get("company_filters", {}).get("stage", []))
+    key_projects = context.get("key_projects", [])
+
+    for company in companies:
+        comp_stack = set(s.lower() for s in company.get("tech_stack_tags", []))
+        comp_stage = (company.get("funding_stage") or "").lower()
+
+        # 1. Stack overlap (0.0 to 1.0)
+        if comp_stack and candidate_stack:
+            overlap_count = len(comp_stack.intersection(candidate_stack))
+            stack_overlap = min(1.0, overlap_count / max(1, len(comp_stack)))
+        else:
+            stack_overlap = 0.5  # Neutral fallback
+
+        # 2. Stage match (0.0 or 1.0)
+        if target_stages:
+            stage_match = 1.0 if comp_stage in target_stages or any(st in comp_stage for st in target_stages) else 0.3
+        else:
+            stage_match = 0.8  # Neutral fallback
+
+        # 3. Project relevance (0.0 to 1.0)
+        if key_projects and comp_stack:
+            proj_overlaps = []
+            for proj in key_projects:
+                p_stack = set(s.lower() for s in proj.get("stack", []))
+                if p_stack:
+                    proj_overlaps.append(len(p_stack.intersection(comp_stack)) / max(1, len(p_stack)))
+            project_relevance = max(proj_overlaps) if proj_overlaps else 0.5
+        else:
+            project_relevance = 0.5
+
+        fit_score = (stack_overlap * 0.40) + (stage_match * 0.30) + (project_relevance * 0.30)
+        company["fit_score"] = round(fit_score * 100, 1)
+
+    return sorted(companies, key=lambda c: c.get("fit_score", 0), reverse=True)
+

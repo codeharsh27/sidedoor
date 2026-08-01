@@ -10,8 +10,10 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://sidedoor:sidedoor@localhost:5432/sidedoor"
 
     # LLM provider for resume parsing (the one deliberate LLM call)
-    llm_provider: str = "gemini"
+    llm_provider: str = "openrouter"  # "openrouter" | "gemini"
     gemini_api_key: str = ""
+    openrouter_api_key: str = ""
+    openrouter_model: str = "google/gemini-2.0-flash-001"
 
     # Embedding model (local, no API key needed)
     embedding_model: str = "all-MiniLM-L6-v2"

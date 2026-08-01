@@ -48,27 +48,177 @@ class User(Base):
         server_default=text("now()"),
     )
 
+    # Extended fields
+    location: Mapped[str | None] = mapped_column(Text, nullable=True)
+    years_experience: Mapped[str | None] = mapped_column(Text, nullable=True)
+    current_role: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     # Relationships
-    profile: Mapped["UserProfile"] = relationship(
+    profile: Mapped["UserProfile | None"] = relationship(
         back_populates="user", uselist=False, lazy="selectin"
+    )
+    skills: Mapped[list["UserSkill"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan", passive_deletes=True
+    )
+    projects: Mapped[list["UserProject"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan", passive_deletes=True
+    )
+    preferences: Mapped["UserPreference | None"] = relationship(
+        back_populates="user", uselist=False, cascade="all, delete-orphan", passive_deletes=True
+    )
+    signals: Mapped[list["UserSignal"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan", passive_deletes=True
     )
     cards: Mapped[list["Card"]] = relationship(
         back_populates="user", cascade="all, delete-orphan", passive_deletes=True
     )
 
 
+class UserSkill(Base):
+    """
+    user_skills table — Resume-extracted or user-stated skills.
+    """
+
+    __tablename__ = "user_skills"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    skill: Mapped[str] = mapped_column(Text, nullable=False)
+    source: Mapped[str] = mapped_column(
+        Text, nullable=False, default="resume"
+    )  # 'resume' | 'stated'
+    confidence: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        server_default=text("now()"),
+    )
+
+    user: Mapped["User"] = relationship(back_populates="skills")
+
+
+class UserProject(Base):
+    """
+    user_projects table — Projects extracted from resume or added during onboarding.
+    """
+
+    __tablename__ = "user_projects"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    stack: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), nullable=False, default=list, server_default=text("'{}'")
+    )
+    status: Mapped[str] = mapped_column(
+        Text, nullable=False, default="built"
+    )  # 'built' | 'in_progress' | 'planned'
+    is_production: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        server_default=text("now()"),
+    )
+
+    user: Mapped["User"] = relationship(back_populates="projects")
+
+
+class UserPreference(Base):
+    """
+    user_preferences table — Frequently updated job search preferences.
+    """
+
+    __tablename__ = "user_preferences"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        unique=True,
+        nullable=False,
+    )
+    target_roles: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), nullable=False, default=list, server_default=text("'{}'")
+    )  # e.g. ['Product Engineer', 'Backend / Systems']
+    company_stage: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), nullable=False, default=list, server_default=text("'{}'")
+    )  # e.g. ['seed', 'series-a', 'yc-backed']
+    industries: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), nullable=False, default=list, server_default=text("'{}'")
+    )  # e.g. ['fintech', 'ai-native']
+    location_pref: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), nullable=False, default=list, server_default=text("'{}'")
+    )  # e.g. ['remote', 'india', 'onsite_india']
+    comp_floor: Mapped[str | None] = mapped_column(Text, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        server_default=text("now()"),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    user: Mapped["User"] = relationship(back_populates="preferences")
+
+
+class UserSignal(Base):
+    """
+    user_signals table — Learned or inferred signals from user interactions.
+    """
+
+    __tablename__ = "user_signals"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    signal: Mapped[str] = mapped_column(Text, nullable=False)
+    weight: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
+    source_event_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        server_default=text("now()"),
+    )
+
+    user: Mapped["User"] = relationship(back_populates="signals")
+
+
 class UserProfile(Base):
     """
     user_profiles table — ARCHITECTURE.md §2 + sanctioned notable_projects addition.
-
-    Fields:
-      - raw_resume_text: the full extracted text from the uploaded resume/portfolio
-      - parsed_skills: flat list of skills ["Python", "React", "PostgreSQL"]
-      - parsed_domains: flat list of domains ["backend web dev", "data pipelines"]
-      - parsed_project_summary: 2-3 sentence summary including seniority signal
-      - notable_projects: structured list of 2-4 projects
-            [{"title": "...", "description": "...", "tech_used": ["..."]}]
-      - embedding_vector: 384-dim vector from all-MiniLM-L6-v2
     """
 
     __tablename__ = "user_profiles"
