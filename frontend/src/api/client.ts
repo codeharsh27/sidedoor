@@ -118,6 +118,55 @@ const normalizeProfile = (
 
 export const apiClient = {
   /**
+   * Sends resume file or text to backend for LLM JSON preview parsing (Step 3/4 verification step)
+   */
+  async parseResumePreview(file?: File, rawText?: string): Promise<any> {
+    let res: Response;
+    if (file) {
+      const formData = new FormData();
+      formData.append('file', file);
+      res = await fetch(`${BASE_URL}/profile/parse-resume`, {
+        method: 'POST',
+        body: formData,
+      });
+    } else if (rawText && rawText.trim()) {
+      const formData = new FormData();
+      formData.append('raw_text', rawText);
+      res = await fetch(`${BASE_URL}/profile/parse-resume`, {
+        method: 'POST',
+        body: formData,
+      });
+    } else {
+      throw new Error('Provide a file or raw text to parse.');
+    }
+
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`Failed to parse resume: ${errText}`);
+    }
+
+    return await res.json();
+  },
+
+  /**
+   * Submits complete verified onboarding payload to normalized database tables
+   */
+  async submitFullOnboarding(payload: any): Promise<{ status: string; user_id: string }> {
+    const res = await fetch(`${BASE_URL}/profile/onboarding`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`Onboarding submission failed: ${errText}`);
+    }
+
+    return await res.json();
+  },
+
+  /**
    * Uploads a user's resume PDF or portfolio link and returns the parsed profile
    */
   async uploadResume(file?: File, link?: string, userId?: string): Promise<UserProfile> {

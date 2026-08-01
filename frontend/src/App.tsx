@@ -34,7 +34,8 @@ export function App() {
 
   // Redirect authenticated users who haven't completed onboarding to /onboarding
   useEffect(() => {
-    if (!loading && user && !hasCompletedOnboarding(user) && location.pathname !== "/onboarding") {
+    const isCompleting = sessionStorage.getItem('completing_onboarding') === 'true';
+    if (!loading && user && !hasCompletedOnboarding(user) && !isCompleting && location.pathname !== "/onboarding") {
       navigate("/onboarding");
     }
   }, [user, loading, location.pathname, navigate]);

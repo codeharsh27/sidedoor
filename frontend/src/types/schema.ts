@@ -14,6 +14,7 @@ export interface UserProfile {
   parsed_skills: string[];
   parsed_domains: string[];
   parsed_project_summary: string;
+  projects?: UserProjectItem[];
   embedding_vector?: number[];
   updated_at: string;
 }
@@ -143,5 +144,62 @@ export interface BountyItem {
   source_url: string;
   description: string;
   senior_build_plan: string;
+}
+
+export interface ExtractedProject {
+  name: string;
+  description: string;
+  stack: string[];
+  status: 'built' | 'in_progress' | 'planned';
+  is_production: boolean;
+}
+
+export interface ExtractedExperience {
+  company: string;
+  role: string;
+  duration: string;
+  highlights: string[];
+}
+
+export interface ParsedResumePreview {
+  name?: string;
+  skills: string[];
+  domains: string[];
+  projects: ExtractedProject[];
+  experience: ExtractedExperience[];
+}
+
+export interface UserSkillItem {
+  skill: string;
+  source?: 'resume' | 'stated';
+  confidence?: number;
+}
+
+export interface UserProjectItem {
+  name: string;
+  description?: string;
+  stack: string[];
+  status: 'built' | 'in_progress' | 'planned';
+  is_production: boolean;
+}
+
+export interface UserPreferencesPayload {
+  target_roles: string[];
+  company_stage: string[];
+  industries: string[];
+  location_pref: string[];
+  comp_floor?: string;
+}
+
+export interface FullOnboardingPayload {
+  user_id: string;
+  email?: string;
+  name?: string;
+  location?: string;
+  years_experience?: string;
+  current_role?: string;
+  skills: UserSkillItem[];
+  projects: UserProjectItem[];
+  preferences: UserPreferencesPayload;
 }
 

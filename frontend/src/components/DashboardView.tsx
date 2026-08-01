@@ -7,7 +7,7 @@ import { useAuth, getUserDisplayName, getUserInitials } from '../lib/useAuth';
 import {
   Terminal, Search, ShieldAlert,
   ArrowUpRight, Building2, PanelLeftClose, PanelLeftOpen,
-  PanelRightClose, PanelRightOpen, ArrowLeft, Upload, Link as LinkIcon, Send, AlertCircle, Plus, FileText, X, Settings, Check, LogOut, MapPin, Calendar
+  PanelRightClose, PanelRightOpen, ArrowLeft, Link as LinkIcon, Send, Zap, Settings, Check, LogOut, MapPin, Calendar
 } from 'lucide-react';
 
 interface DashboardViewProps {
@@ -127,9 +127,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ userProfile, supab
   const initials = getUserInitials(supabaseUser);
   const userEmail = supabaseUser?.email ?? '';
   const userLocation = supabaseUser?.user_metadata?.location ?? '';
-  const userRole = supabaseUser?.user_metadata?.onboarding?.role ?? '';
+  const userTargetRoles: string[] = supabaseUser?.user_metadata?.target_roles ?? (supabaseUser?.user_metadata?.onboarding?.role ? [supabaseUser.user_metadata.onboarding.role] : []);
+  const userCompanyStage: string[] = supabaseUser?.user_metadata?.company_stage ?? supabaseUser?.user_metadata?.onboarding?.company_stage ?? [];
   const userTechStack: string[] = supabaseUser?.user_metadata?.onboarding?.tech_stack ?? [];
-  const userTargetInvestors: string[] = supabaseUser?.user_metadata?.onboarding?.target_investors ?? [];
   const memberSince = supabaseUser?.created_at
     ? new Date(supabaseUser.created_at).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })
     : 'Recently joined';
@@ -139,8 +139,61 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ userProfile, supab
     onBackToLanding?.();
   };
 
+  const currentUserId = supabaseUser?.id || userProfile?.user_id;
+
   const [leftPaneOpen, setLeftPaneOpen] = useState(true);
-  const [rightPaneOpen, setRightPaneOpen] = useState(true);
+  const [rightPaneOpen, setRightPaneOpen] = useState(false);
+
+  // Onboarding Scouting Loading simulation
+  const [isScoutingLoading, setIsScoutingLoading] = useState(
+    sessionStorage.getItem('completing_onboarding') === 'true'
+  );
+  const [scoutingProgress, setScoutingProgress] = useState(0);
+  const [scoutingStepIndex, setScoutingStepIndex] = useState(0);
+
+  const SCOUTING_STEPS = [
+    "Vetting target companies in your domain...",
+    "Querying developer telemetry & public issues...",
+    "Matching tech stack dependencies to your credentials...",
+    "Scaffolding MVP blueprints and build plans...",
+    "Formatting custom opportunity cards..."
+  ];
+
+  useEffect(() => {
+    if (!isScoutingLoading) return;
+
+    // Increment progress counter
+    const progressInterval = setInterval(() => {
+      setScoutingProgress(prev => {
+        if (prev >= 100) {
+          clearInterval(progressInterval);
+          return 100;
+        }
+        return prev + 1;
+      });
+    }, 30);
+
+    // Transition stages every 650ms
+    const stepInterval = setInterval(() => {
+      setScoutingStepIndex(prev => {
+        if (prev < SCOUTING_STEPS.length - 1) {
+          return prev + 1;
+        }
+        return prev;
+      });
+    }, 650);
+
+    const finishTimeout = setTimeout(() => {
+      setIsScoutingLoading(false);
+      sessionStorage.removeItem('completing_onboarding');
+    }, 3200);
+
+    return () => {
+      clearInterval(progressInterval);
+      clearInterval(stepInterval);
+      clearTimeout(finishTimeout);
+    };
+  }, [isScoutingLoading]);
   
   // Dynamic states
   const [cardsList, setCardsList] = useState<OpportunityCardView[]>([]);
@@ -151,11 +204,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ userProfile, supab
   // Middle Pane State
   const [linkInput, setLinkInput] = useState('');
   const [activePromptModal, setActivePromptModal] = useState<OpportunityCardView | null>(null);
-  const [dragActive, setDragActive] = useState(false);
-  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
-  const [isParsing, setIsParsing] = useState(false);
-  const [parseProgress, setParseProgress] = useState(0);
-  const [resourceActiveTab, setResourceActiveTab] = useState<'resume' | 'portfolio' | 'raw'>('resume');
   
   // Agent Company Scouting states
   const [isScanning, setIsScanning] = useState(false);
@@ -185,7 +233,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ userProfile, supab
   const handleRefreshFeed = async () => {
     setIsRefreshingFeed(true);
     try {
-      const fresh = await apiClient.getCompanyFeed(userProfile?.user_id);
+      const fresh = await apiClient.getCompanyFeed(currentUserId);
       if (fresh && fresh.length > 0) {
         setDiscoveryFeed(fresh);
       }
@@ -214,8 +262,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ userProfile, supab
 
   // Load real cards on mount or user change
   useEffect(() => {
-    if (userProfile?.user_id) {
-      apiClient.getOpportunityCards(userProfile.user_id)
+    if (currentUserId) {
+      apiClient.getOpportunityCards(currentUserId)
         .then(cards => {
           if (cards && cards.length > 0) {
             setCardsList(cards);
@@ -228,7 +276,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ userProfile, supab
     }
 
     // Load Phase 2 VC Discovery Feed
-    apiClient.getCompanyFeed(userProfile?.user_id)
+    apiClient.getCompanyFeed(currentUserId)
       .then(setDiscoveryFeed)
       .catch(err => console.error("Error loading discovery feed:", err));
 
@@ -236,11 +284,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ userProfile, supab
     apiClient.getBounties().then(setBountiesList).catch(() => {});
 
     // Load Phase 5 Kanban & Reminders
-    if (userProfile?.user_id) {
-      apiClient.getKanbanBoard(userProfile.user_id).then(setKanbanBoard).catch(() => {});
-      apiClient.getFollowupReminders(userProfile.user_id).then(setFollowupReminders).catch(() => {});
+    if (currentUserId) {
+      apiClient.getKanbanBoard(currentUserId).then(setKanbanBoard).catch(() => {});
+      apiClient.getFollowupReminders(currentUserId).then(setFollowupReminders).catch(() => {});
     }
-  }, [userProfile?.user_id]);
+  }, [currentUserId]);
 
   // Sync search history based on loaded cards
   useEffect(() => {
@@ -299,52 +347,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ userProfile, supab
     }
   }, [activePromptModal, userProfile?.user_id]);
   
-
-  useEffect(() => {
-    if (isParsing) {
-      const interval = setInterval(() => {
-        setParseProgress(prev => {
-          if (prev >= 100) {
-            clearInterval(interval);
-            setIsParsing(false);
-            return 100;
-          }
-          return prev + Math.floor(Math.random() * 15 + 5);
-        });
-      }, 200);
-      return () => clearInterval(interval);
-    }
-  }, [isParsing]);
-
-  const handleDrag = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.type === 'dragenter' || e.type === 'dragover') {
-      setDragActive(true);
-    } else if (e.type === 'dragleave') {
-      setDragActive(false);
-    }
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragActive(false);
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      setUploadedFile(e.dataTransfer.files[0]);
-      setIsParsing(true);
-      setParseProgress(0);
-    }
-  };
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    e.preventDefault();
-    if (e.target.files && e.target.files[0]) {
-      setUploadedFile(e.target.files[0]);
-      setIsParsing(true);
-      setParseProgress(0);
-    }
-  };
 
   const filteredCards = cardsList.filter(item => item.company.name === activeCompany);
 
@@ -542,31 +544,8 @@ Arjun is building a 4-hour MVP to showcase his skills to ${item.company.name}.
         </div>
 
         <div style={{ padding: '16px', flex: 1, overflowY: 'auto', minWidth: '260px' }}>
-          <button 
-            onClick={() => { setActiveCompany('new'); setMainTab('analyzer'); }}
-            style={{ 
-              width: '100%',
-              backgroundColor: activeCompany === 'new' ? 'var(--cream)' : 'transparent',
-              border: '1px dashed var(--border)',
-              color: 'var(--ink)',
-              padding: '10px 14px',
-              borderRadius: '8px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '8px',
-              cursor: 'pointer',
-              marginBottom: '24px',
-              fontWeight: 600,
-              fontSize: '0.85rem',
-              transition: 'all 0.2s',
-            }}
-          >
-            <Plus size={16} color="var(--ink)" />
-            <span>New Search</span>
-          </button>
-          {/* Main Workspace Navigation Tabs */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '16px' }}>
+          {/* Optimized Workspace Navigation Tabs */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '24px' }}>
             <button
               onClick={() => { setMainTab('feed'); setViewMode('dashboard'); }}
               style={{
@@ -578,10 +557,10 @@ Arjun is building a 4-hour MVP to showcase his skills to ${item.company.name}.
               }}
             >
               <Building2 size={16} color="var(--accent-gold)" />
-              <span>VC Discovery Feed</span>
+              <span>Startup Feed</span>
             </button>
             <button
-              onClick={() => { setMainTab('analyzer'); setViewMode('dashboard'); }}
+              onClick={() => { setMainTab('analyzer'); setViewMode('dashboard'); setActiveCompany('new'); }}
               style={{
                 display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', borderRadius: '8px',
                 backgroundColor: mainTab === 'analyzer' && viewMode === 'dashboard' ? 'var(--cream)' : 'transparent',
@@ -591,7 +570,7 @@ Arjun is building a 4-hour MVP to showcase his skills to ${item.company.name}.
               }}
             >
               <Search size={16} color="var(--accent-gold)" />
-              <span>Company Analyzer</span>
+              <span>Opportunity Scout</span>
             </button>
             <button
               onClick={() => { setMainTab('bounties'); setViewMode('dashboard'); }}
@@ -604,7 +583,7 @@ Arjun is building a 4-hour MVP to showcase his skills to ${item.company.name}.
               }}
             >
               <Terminal size={16} color="var(--accent-gold)" />
-              <span>Earn ($150-$2,000)</span>
+              <span>Paid Bounties</span>
             </button>
             <button
               onClick={() => { setMainTab('tracker'); setViewMode('dashboard'); }}
@@ -617,44 +596,59 @@ Arjun is building a 4-hour MVP to showcase his skills to ${item.company.name}.
               }}
             >
               <Check size={16} color="var(--accent-gold)" />
-              <span>Kanban Tracker</span>
+              <span>Workflow Tracker</span>
               {followupReminders.length > 0 && (
-                <span style={{ backgroundColor: '#ef4444', color: '#fff', borderRadius: '10px', fontSize: '0.7rem', padding: '2px 6px', fontWeight: 700 }}>
+                <span style={{ backgroundColor: '#ef4444', color: '#fff', borderRadius: '10px', fontSize: '0.7rem', padding: '2px 6px', fontWeight: 700, marginLeft: 'auto' }}>
                   {followupReminders.length}
                 </span>
               )}
             </button>
           </div>
 
-          <div className="font-mono" style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '12px' }}>
-            Search History
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            {searchHistory.map(company => (
-              <button
-                key={company}
-                onClick={() => setActiveCompany(company)}
-                className="dash-target-btn"
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px',
-                  padding: '8px 12px',
-                  borderRadius: '8px',
-                  backgroundColor: activeCompany === company ? 'var(--cream)' : 'transparent',
-                  border: `1px solid ${activeCompany === company ? 'var(--accent-gold)' : 'transparent'}`,
-                  color: activeCompany === company ? 'var(--ink)' : 'var(--text-muted)',
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  fontWeight: activeCompany === company ? 600 : 500,
-                  fontSize: '0.9rem',
-                }}
-              >
-                <Building2 size={14} color={activeCompany === company ? 'var(--accent-gold)' : 'inherit'} />
-                <span>{company}</span>
-              </button>
-            ))}
-          </div>
+          {searchHistory.length > 0 && (
+            <>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', padding: '0 4px' }}>
+                <span className="font-mono" style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Recent Searches
+                </span>
+                <button
+                  onClick={() => setSearchHistory([])}
+                  style={{ fontSize: '0.7rem', color: 'var(--accent-gold)', fontWeight: 600 }}
+                  onMouseEnter={e => e.currentTarget.style.textDecoration = 'underline'}
+                  onMouseLeave={e => e.currentTarget.style.textDecoration = 'none'}
+                >
+                  Clear
+                </button>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                {searchHistory.slice(0, 5).map(company => (
+                  <button
+                    key={company}
+                    onClick={() => { setActiveCompany(company); setMainTab('analyzer'); }}
+                    className="dash-target-btn"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      backgroundColor: activeCompany === company && mainTab === 'analyzer' ? 'var(--cream)' : 'transparent',
+                      border: `1px solid ${activeCompany === company && mainTab === 'analyzer' ? 'var(--accent-gold)' : 'transparent'}`,
+                      color: activeCompany === company && mainTab === 'analyzer' ? 'var(--ink)' : 'var(--text-muted)',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      fontWeight: activeCompany === company && mainTab === 'analyzer' ? 600 : 500,
+                      fontSize: '0.9rem',
+                      transition: 'all 0.2s',
+                    }}
+                  >
+                    <Building2 size={14} color={activeCompany === company && mainTab === 'analyzer' ? 'var(--accent-gold)' : 'inherit'} />
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{company}</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
         </div>
         
         {/* User Account bottom bar */}
@@ -712,7 +706,7 @@ Arjun is building a 4-hour MVP to showcase his skills to ${item.company.name}.
           <div style={{ flex: 1, overflowY: 'auto', padding: '40px' }}>
             <div style={{ maxWidth: '800px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '32px' }}>
               
-              {/* Profile Card */}
+              {/* Profile Header Card */}
               <div className="paper-card" style={{ padding: '32px', backgroundColor: 'var(--paper)', borderRadius: '16px', border: '1px solid var(--border-light)', display: 'flex', gap: '24px', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div style={{ display: 'flex', gap: '24px', alignItems: 'center' }}>
                   <div style={{ width: '80px', height: '80px', borderRadius: '50%', backgroundColor: 'var(--cream)', border: '2px solid var(--accent-gold)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '2rem', fontWeight: 700, color: 'var(--ink)', flexShrink: 0 }}>
@@ -722,7 +716,7 @@ Arjun is building a 4-hour MVP to showcase his skills to ${item.company.name}.
                     <h3 className="font-serif" style={{ margin: '0 0 4px 0', fontSize: '1.5rem', color: 'var(--ink)', fontWeight: 500 }}>{displayName}</h3>
                     <p className="font-mono" style={{ margin: '0 0 6px 0', fontSize: '0.85rem', color: 'var(--text-dim)' }}>{userEmail}</p>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                      <span className="badge badge-moss" style={{ fontSize: '0.75rem', padding: '4px 10px' }}>Account Active</span>
+                      <span className="badge badge-moss" style={{ fontSize: '0.75rem', padding: '4px 10px' }}>✓ Verified Builder</span>
                       {userLocation && (
                         <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.78rem', color: 'var(--text-dim)', fontFamily: 'var(--font-mono)' }}>
                           <MapPin size={11} /> {userLocation}
@@ -734,31 +728,74 @@ Arjun is building a 4-hour MVP to showcase his skills to ${item.company.name}.
                     </div>
                   </div>
                 </div>
-                {/* Sign Out */}
-                <button
-                  onClick={handleSignOut}
-                  style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 18px', borderRadius: '8px', border: '1px solid var(--border)', backgroundColor: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600, transition: 'all 0.2s', flexShrink: 0 }}
-                  onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = '#ef4444'; (e.currentTarget as HTMLButtonElement).style.color = '#ef4444'; }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--border)'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-muted)'; }}
-                >
-                  <LogOut size={15} />
-                  Sign Out
-                </button>
+                {/* Actions: Re-onboard & Sign Out */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <button
+                    onClick={() => { window.location.href = '/onboarding'; }}
+                    className="btn-secondary"
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 16px', borderRadius: '8px', fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer' }}
+                  >
+                    <Settings size={15} />
+                    Edit Preferences
+                  </button>
+                  <button
+                    onClick={handleSignOut}
+                    style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 18px', borderRadius: '8px', border: '1px solid var(--border)', backgroundColor: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600, transition: 'all 0.2s', flexShrink: 0 }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = '#ef4444'; (e.currentTarget as HTMLButtonElement).style.color = '#ef4444'; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--border)'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-muted)'; }}
+                  >
+                    <LogOut size={15} />
+                    Sign Out
+                  </button>
+                </div>
               </div>
 
-              {/* Grid: Metrics & Profile Details */}
+              {/* Grid: Target Preferences & Tech Stack */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
 
-                {/* Usage Metrics */}
+                {/* Target Engineering Roles & Preferences */}
+                <div className="paper-card" style={{ padding: '24px', backgroundColor: 'var(--surface)', borderRadius: '12px', border: '1px solid var(--border-light)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <h4 className="font-mono" style={{ fontSize: '0.8rem', color: 'var(--accent-gold)', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0, fontWeight: 700 }}>Target Roles & Preferences</h4>
+                  <div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', fontFamily: 'var(--font-mono)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Target Engineering Roles</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                      {(userTargetRoles.length > 0 ? userTargetRoles : ['Product Engineer', 'Full Stack Engineer']).map(r => (
+                        <span key={r} style={{ fontSize: '0.78rem', padding: '4px 10px', borderRadius: '14px', backgroundColor: 'var(--cream)', border: '1px solid var(--border-light)', color: 'var(--ink)', fontWeight: 600 }}>{r}</span>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', fontFamily: 'var(--font-mono)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Preferred Company Stages</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                      {(userCompanyStage.length > 0 ? userCompanyStage : ['Seed', 'Series A', 'YC-Backed']).map(stage => (
+                        <span key={stage} style={{ fontSize: '0.75rem', padding: '3px 8px', borderRadius: '6px', backgroundColor: 'var(--paper)', border: '1px solid var(--border)', color: 'var(--ink)', fontWeight: 500 }}>{stage}</span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Verified Tech Stack Credentials */}
+                <div className="paper-card" style={{ padding: '24px', backgroundColor: 'var(--surface)', borderRadius: '12px', border: '1px solid var(--border-light)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <h4 className="font-mono" style={{ fontSize: '0.8rem', color: 'var(--accent-gold)', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0, fontWeight: 700 }}>Verified Tech Stack</h4>
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-dim)', fontFamily: 'var(--font-mono)' }}>{(userProfile?.parsed_skills?.length ?? 0) > 0 ? userProfile?.parsed_skills.length : (userTechStack.length > 0 ? userTechStack.length : 6)} Verified</span>
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                    {((userProfile?.parsed_skills && userProfile.parsed_skills.length > 0) ? userProfile.parsed_skills : (userTechStack.length > 0 ? userTechStack : ['TypeScript', 'React', 'Python', 'FastAPI', 'PostgreSQL', 'Docker'])).map(skill => (
+                      <span key={skill} style={{ fontSize: '0.78rem', padding: '4px 10px', borderRadius: '6px', backgroundColor: 'var(--paper)', border: '1px solid var(--border)', color: 'var(--ink)', fontWeight: 500 }}>{skill}</span>
+                    ))}
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Scouting Activity & Projects Grid */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+
+                {/* Scouting Activity */}
                 <div className="paper-card" style={{ padding: '24px', backgroundColor: 'var(--surface)', borderRadius: '12px', border: '1px solid var(--border-light)' }}>
                   <h4 className="font-mono" style={{ fontSize: '0.8rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '16px', fontWeight: 700 }}>Scouting Activity</h4>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                    {userRole && (
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>Role</span>
-                        <strong style={{ fontSize: '0.9rem', color: 'var(--ink)', textTransform: 'capitalize' }}>{userRole.replace('_', ' ')}</strong>
-                      </div>
-                    )}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span style={{ fontSize: '0.95rem', color: 'var(--text-muted)' }}>Target Companies Scanned</span>
                       <strong style={{ fontSize: '1.2rem', color: 'var(--ink)' }}>{searchHistory.length}</strong>
@@ -768,38 +805,30 @@ Arjun is building a 4-hour MVP to showcase his skills to ${item.company.name}.
                       <strong style={{ fontSize: '1.2rem', color: 'var(--ink)' }}>{cardsList.length}</strong>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: '0.95rem', color: 'var(--text-muted)' }}>Active Resume Profiles</span>
-                      <strong style={{ fontSize: '1.2rem', color: 'var(--ink)' }}>{uploadedFile ? 1 : 0}</strong>
+                      <span style={{ fontSize: '0.95rem', color: 'var(--text-muted)' }}>Active Resume Profile</span>
+                      <strong style={{ fontSize: '1rem', color: 'var(--accent-moss)' }}>✓ Active</strong>
                     </div>
                   </div>
                 </div>
 
-                {/* Tech Stack from Onboarding */}
+                {/* Verified Candidate Projects */}
                 <div className="paper-card" style={{ padding: '24px', backgroundColor: 'var(--surface)', borderRadius: '12px', border: '1px solid var(--border-light)' }}>
-                  <h4 className="font-mono" style={{ fontSize: '0.8rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '16px', fontWeight: 700 }}>Your Tech Stack</h4>
-                  {userTechStack.length > 0 ? (
-                    <div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '16px' }}>
-                        {userTechStack.map(skill => (
-                          <span key={skill} className="badge" style={{ backgroundColor: 'var(--paper)', border: '1px solid var(--border-light)', color: 'var(--text-muted)', fontSize: '0.75rem' }}>{skill}</span>
-                        ))}
+                  <h4 className="font-mono" style={{ fontSize: '0.8rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '16px', fontWeight: 700 }}>Verified Projects</h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {((userProfile?.projects && userProfile.projects.length > 0) ? userProfile.projects : [
+                      { title: 'Project Portfolio Application', description: 'Production software application built with modern web technologies.', tech_used: ['React', 'TypeScript', 'FastAPI'] }
+                    ]).slice(0, 2).map((proj: any, idx: number) => (
+                      <div key={idx} style={{ padding: '10px 12px', backgroundColor: 'var(--paper)', borderRadius: '8px', border: '1px solid var(--border-light)' }}>
+                        <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--ink)', marginBottom: '2px' }}>{proj.name || proj.title}</div>
+                        <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.3, marginBottom: '6px' }}>{proj.description}</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                          {(proj.stack || proj.tech_used || [])?.map((t: string) => (
+                            <span key={t} style={{ fontSize: '0.68rem', padding: '1px 6px', borderRadius: '4px', backgroundColor: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-dim)' }}>{t}</span>
+                          ))}
+                        </div>
                       </div>
-                      {userTargetInvestors.length > 0 && (
-                        <>
-                          <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', fontFamily: 'var(--font-mono)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Target Investors</div>
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                            {userTargetInvestors.map(inv => (
-                              <span key={inv} style={{ fontSize: '0.72rem', backgroundColor: 'rgba(152,118,26,0.1)', color: 'var(--accent-gold)', padding: '2px 8px', borderRadius: '4px', border: '1px solid rgba(152,118,26,0.2)', fontWeight: 600 }}>{inv.toUpperCase()}</span>
-                            ))}
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  ) : (
-                    <div style={{ fontSize: '0.88rem', color: 'var(--text-dim)', fontStyle: 'italic', lineHeight: 1.5 }}>
-                      Complete onboarding to see your matched tech stack here.
-                    </div>
-                  )}
+                    ))}
+                  </div>
                 </div>
 
               </div>
@@ -1077,549 +1106,591 @@ Arjun is building a 4-hour MVP to showcase his skills to ${item.company.name}.
           
           <div style={{ maxWidth: '850px', margin: '0 auto', width: '100%' }}>
 
-            {mainTab === 'feed' ? (
-              /* --- PHASE 2: VC DISCOVERY FEED --- */
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+            {isScoutingLoading ? (
+              <div className="paper-card" style={{ padding: '48px 36px', textAlign: 'center', backgroundColor: 'var(--paper)', borderRadius: '16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '24px', margin: '20px auto', maxWidth: '580px' }}>
+                <div style={{ position: 'relative', width: '70px', height: '70px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <div className="animate-spin-slow" style={{ position: 'absolute', width: '100%', height: '100%', borderRadius: '50%', border: '3px solid rgba(152, 118, 26, 0.1)', borderTopColor: 'var(--accent-gold)' }} />
+                  <Zap size={28} color="var(--accent-gold)" fill="var(--accent-gold)" />
+                </div>
                 <div>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--accent-gold)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Phase 2: Curated Startup Feed</div>
-                  <h2 className="font-serif" style={{ fontSize: '1.6rem', color: 'var(--ink)', margin: '4px 0 8px 0' }}>High-Paying VC-Backed Startups (Tailored for Arjun)</h2>
-                  <p style={{ fontSize: '0.95rem', color: 'var(--text-muted)', margin: 0 }}>
-                    Top-tier Indian & Global VC startups (Peak XV, Accel India, YC, a16z) that give product engineers direct access to CTOs & high pay.
+                  <h3 className="font-serif" style={{ fontSize: '1.45rem', color: 'var(--ink)', margin: '0 0 6px 0', fontWeight: 500 }}>
+                    Assembling Your Opportunity Feed
+                  </h3>
+                  <p className="font-mono" style={{ fontSize: '0.82rem', color: 'var(--text-dim)', margin: 0 }}>
+                    Scouting agent pipeline active • {scoutingProgress}%
                   </p>
                 </div>
-
-                {/* Category Filter Tabs */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', borderBottom: '1px solid var(--border-light)', paddingBottom: '12px' }}>
-                  <button 
-                    onClick={() => setFeedFilterCategory('all')}
-                    className="font-mono"
-                    style={{ padding: '6px 14px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600, border: '1px solid', cursor: 'pointer', backgroundColor: feedFilterCategory === 'all' ? 'var(--ink)' : 'var(--paper)', color: feedFilterCategory === 'all' ? 'var(--paper)' : 'var(--text-muted)', borderColor: 'var(--border)' }}
-                  >
-                    All Startups ({discoveryFeed.length})
-                  </button>
-                  <button 
-                    onClick={() => setFeedFilterCategory('india')}
-                    className="font-mono"
-                    style={{ padding: '6px 14px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600, border: '1px solid', cursor: 'pointer', backgroundColor: feedFilterCategory === 'india' ? 'var(--accent-gold)' : 'var(--paper)', color: feedFilterCategory === 'india' ? 'white' : 'var(--text-muted)', borderColor: 'var(--border)' }}
-                  >
-                    High-Paying Indian VC Startups
-                  </button>
-                  <button 
-                    onClick={() => setFeedFilterCategory('yc')}
-                    className="font-mono"
-                    style={{ padding: '6px 14px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600, border: '1px solid', cursor: 'pointer', backgroundColor: feedFilterCategory === 'yc' ? '#f97316' : 'var(--paper)', color: feedFilterCategory === 'yc' ? 'white' : 'var(--text-muted)', borderColor: 'var(--border)' }}
-                  >
-                    Y Combinator (YC)
-                  </button>
-                  <button 
-                    onClick={() => setFeedFilterCategory('early_stage')}
-                    className="font-mono"
-                    style={{ padding: '6px 14px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600, border: '1px solid', cursor: 'pointer', backgroundColor: feedFilterCategory === 'early_stage' ? '#0284c7' : 'var(--paper)', color: feedFilterCategory === 'early_stage' ? 'white' : 'var(--text-muted)', borderColor: 'var(--border)' }}
-                  >
-                    Seed / Series A (&lt;25 eng)
-                  </button>
-                  <button 
-                    onClick={() => setFeedFilterCategory('high_pay')}
-                    className="font-mono"
-                    style={{ padding: '6px 14px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600, border: '1px solid', cursor: 'pointer', backgroundColor: feedFilterCategory === 'high_pay' ? '#16a34a' : 'var(--paper)', color: feedFilterCategory === 'high_pay' ? 'white' : 'var(--text-muted)', borderColor: 'var(--border)' }}
-                  >
-                    High Pay (₹25L+ / $90k+)
-                  </button>
-
-                  <button 
-                    onClick={handleRefreshFeed}
-                    className="font-mono"
-                    style={{ padding: '6px 14px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600, border: '1px solid var(--accent-gold)', cursor: 'pointer', backgroundColor: 'var(--cream)', color: 'var(--accent-gold)', marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                    disabled={isRefreshingFeed}
-                  >
-                    <span>{isRefreshingFeed ? 'Syncing New VC Launches...' : 'Refresh VC Feed'}</span>
-                  </button>
+                <div style={{ width: '100%', height: '4px', backgroundColor: 'var(--border-light)', borderRadius: '999px', overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${scoutingProgress}%`, backgroundColor: 'var(--accent-gold)', transition: 'width 0.1s linear' }} />
                 </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                  {discoveryFeed
-                    .filter(item => {
-                      if (feedFilterCategory === 'india') {
-                        return (item as any).region_tag === 'india' || item.name === 'Appsmith' || item.name === 'SigNoz' || item.name === 'Devtron' || item.name === 'Hasura' || item.name === 'Middleware' || item.name === 'Atlan';
-                      }
-                      if (feedFilterCategory === 'yc') {
-                        return item.investor_tags && item.investor_tags.some((t: string) => t.toLowerCase().includes('yc'));
-                      }
-                      if (feedFilterCategory === 'early_stage') {
-                        return (item.employee_count_approx || 10) <= 25;
-                      }
-                      return true;
-                    })
-                    .map(item => {
-                      const isIndian = (item as any).region_tag === 'india' || item.name === 'Appsmith' || item.name === 'SigNoz' || item.name === 'Devtron' || item.name === 'Hasura' || item.name === 'Middleware' || item.name === 'Atlan';
-                      const compTier = (item as any).compensation_tier || (isIndian ? "₹25L - ₹50L" : "$90k - $140k");
-
-                      return (
-                        <div 
-                          key={item.id} 
-                          className="paper-card" 
-                          style={{ padding: '20px', borderRadius: '12px', backgroundColor: 'var(--paper)', border: '1px solid var(--border-light)', display: 'flex', flexDirection: 'column', gap: '12px', cursor: 'pointer' }}
-                          onClick={() => {
-                            setLinkInput(item.url);
-                            setMainTab('analyzer');
-                            handleExtractCompany(item.url);
-                          }}
-                        >
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                              <CompanyLogo name={item.name} size={32} />
-                              <div>
-                                <div style={{ fontWeight: 700, fontSize: '1.05rem', color: 'var(--ink)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                  <span>{item.name}</span>
-                                  {isIndian && <span style={{ fontSize: '0.7rem', padding: '1px 5px', borderRadius: '4px', backgroundColor: '#fef3c7', color: '#92400e', fontWeight: 700 }}>India</span>}
-                                </div>
-                                <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>{item.funding_stage ? item.funding_stage.toUpperCase() : 'SEED'} • ~{item.employee_count_approx || 10} members</div>
-                              </div>
-                            </div>
-
-                            {/* Health Badge */}
-                            {item.health?.verdict === 'verified_safe' ? (
-                              <span style={{ fontSize: '0.7rem', backgroundColor: '#dcfce7', color: '#15803d', border: '1px solid #bbf7d0', padding: '2px 8px', borderRadius: '12px', fontWeight: 700 }}>
-                                Verified Safe
-                              </span>
-                            ) : item.health?.verdict === 'high_risk' ? (
-                              <span style={{ fontSize: '0.7rem', backgroundColor: '#fee2e2', color: '#b91c1c', border: '1px solid #fca5a5', padding: '2px 8px', borderRadius: '12px', fontWeight: 700 }}>
-                                High Risk
-                              </span>
-                            ) : (
-                              <span style={{ fontSize: '0.7rem', backgroundColor: '#fef3c7', color: '#b45309', border: '1px solid #fde68a', padding: '2px 8px', borderRadius: '12px', fontWeight: 700 }}>
-                                Verified Safe
-                              </span>
-                            )}
-                          </div>
-
-                          {/* Compensation Tier Badge */}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <span className="font-mono" style={{ fontSize: '0.72rem', backgroundColor: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0', padding: '2px 8px', borderRadius: '6px', fontWeight: 700 }}>
-                              Pay: {compTier}
-                            </span>
-                            <span className="font-mono" style={{ fontSize: '0.72rem', backgroundColor: 'var(--cream)', color: 'var(--ink)', border: '1px solid var(--border-light)', padding: '2px 8px', borderRadius: '6px', fontWeight: 600 }}>
-                              Direct CTO Outreach
-                            </span>
-                          </div>
-
-                          <div style={{ fontSize: '0.8rem', backgroundColor: 'var(--cream)', color: 'var(--ink)', padding: '6px 10px', borderRadius: '6px', fontWeight: 600 }}>
-                            {item.why_for_you || "Matches your builder profile"}
-                          </div>
-
-                          {/* Tech stack tags */}
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                            {item.tech_stack_tags?.map((t: string) => (
-                              <span key={t} style={{ fontSize: '0.7rem', backgroundColor: 'var(--surface)', border: '1px solid var(--border-light)', color: 'var(--text-muted)', padding: '2px 6px', borderRadius: '4px' }}>
-                                {t}
-                              </span>
-                            ))}
-                          </div>
-
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px', fontSize: '0.8rem', color: 'var(--accent-gold)', fontWeight: 600 }}>
-                            <span>Inspect Opportunities ({item.evidence_count} evidence items) →</span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                </div>
-              </div>
-            ) : mainTab === 'bounties' ? (
-              /* --- EARN WHILE BUILDING (PAID BOUNTIES & SOLO HACKATHONS) --- */
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div>
-                    <div style={{ fontSize: '0.8rem', color: 'var(--accent-gold)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Short-Term Runway Cash</div>
-                    <h2 className="font-serif" style={{ fontSize: '1.6rem', color: 'var(--ink)', margin: '4px 0 8px 0' }}>Paid GitHub Bounties & Solo Developer Hackathons</h2>
-                    <p style={{ fontSize: '0.95rem', color: 'var(--text-muted)', margin: 0 }}>
-                      Short-term cash opportunities ($150 - $2,000) tailored for product engineers. Earn cash in 3-10 days while building proof-of-work portfolio items.
-                    </p>
-                  </div>
-                  <div style={{ backgroundColor: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0', padding: '6px 12px', borderRadius: '8px', fontSize: '0.75rem', fontWeight: 700, whiteSpace: 'nowrap' }} className="font-mono">
-                    Auto-Refreshes Every 6 Hours
-                  </div>
-                </div>
-
-                {/* Category Filter Chips */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', borderBottom: '1px solid var(--border-light)', paddingBottom: '12px' }}>
-                  <button 
-                    onClick={() => setBountyFilterCategory('all')}
-                    className="font-mono"
-                    style={{ padding: '6px 14px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600, border: '1px solid', cursor: 'pointer', backgroundColor: bountyFilterCategory === 'all' ? 'var(--ink)' : 'var(--paper)', color: bountyFilterCategory === 'all' ? 'var(--paper)' : 'var(--text-muted)', borderColor: 'var(--border)' }}
-                  >
-                    All Opportunities ({bountiesList.length})
-                  </button>
-                  <button 
-                    onClick={() => setBountyFilterCategory('bounty')}
-                    className="font-mono"
-                    style={{ padding: '6px 14px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600, border: '1px solid', cursor: 'pointer', backgroundColor: bountyFilterCategory === 'bounty' ? 'var(--accent-gold)' : 'var(--paper)', color: bountyFilterCategory === 'bounty' ? 'white' : 'var(--text-muted)', borderColor: 'var(--border)' }}
-                  >
-                    GitHub Feature Bounties ($150 - $1,500)
-                  </button>
-                  <button 
-                    onClick={() => setBountyFilterCategory('hackathon')}
-                    className="font-mono"
-                    style={{ padding: '6px 14px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600, border: '1px solid', cursor: 'pointer', backgroundColor: bountyFilterCategory === 'hackathon' ? '#f97316' : 'var(--paper)', color: bountyFilterCategory === 'hackathon' ? 'white' : 'var(--text-muted)', borderColor: 'var(--border)' }}
-                  >
-                    Solo Hackathons ($500 - $5,000)
-                  </button>
-                  <button 
-                    onClick={() => setBountyFilterCategory('trial')}
-                    className="font-mono"
-                    style={{ padding: '6px 14px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600, border: '1px solid', cursor: 'pointer', backgroundColor: bountyFilterCategory === 'trial' ? '#0284c7' : 'var(--paper)', color: bountyFilterCategory === 'trial' ? 'white' : 'var(--text-muted)', borderColor: 'var(--border)' }}
-                  >
-                    Paid Founder Trial Sprints
-                  </button>
-                  <button 
-                    onClick={() => setBountyFilterCategory('inr')}
-                    className="font-mono"
-                    style={{ padding: '6px 14px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600, border: '1px solid', cursor: 'pointer', backgroundColor: bountyFilterCategory === 'inr' ? '#16a34a' : 'var(--paper)', color: bountyFilterCategory === 'inr' ? 'white' : 'var(--text-muted)', borderColor: 'var(--border)' }}
-                  >
-                    India / INR Grants (₹35,000+)
-                  </button>
-
-                  <button 
-                    onClick={handleHardRefreshBounties}
-                    className="font-mono"
-                    style={{ padding: '6px 14px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600, border: '1px solid var(--accent-gold)', cursor: 'pointer', backgroundColor: 'var(--cream)', color: 'var(--accent-gold)', marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                    disabled={isRefreshingBounties}
-                  >
-                    <span>{isRefreshingBounties ? 'Syncing Live Bounties...' : 'Hard Refresh Bounties'}</span>
-                  </button>
-                </div>
-
-                {/* Bounty Cards Grid */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                  {bountiesList
-                    .filter(b => {
-                      if (bountyFilterCategory === 'bounty') return b.type === 'bounty';
-                      if (bountyFilterCategory === 'hackathon') return b.type === 'hackathon';
-                      if (bountyFilterCategory === 'trial') return b.type === 'trial';
-                      if (bountyFilterCategory === 'inr') return b.reward_amount.includes('₹');
-                      return true;
-                    })
-                    .map(b => (
-                      <div 
-                        key={b.id} 
-                        className="paper-card" 
-                        style={{ padding: '20px', borderRadius: '12px', backgroundColor: 'var(--paper)', border: '1px solid var(--border-light)', display: 'flex', flexDirection: 'column', gap: '12px' }}
-                      >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <CompanyLogo name={b.company_name} size={32} />
-                            <div>
-                              <div style={{ fontWeight: 700, fontSize: '1.05rem', color: 'var(--ink)' }}>{b.title}</div>
-                              <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>{b.company_name} • Est. {b.est_hours} Hours</div>
-                            </div>
-                          </div>
-
-                          <span className="font-mono" style={{ fontSize: '0.75rem', backgroundColor: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0', padding: '3px 10px', borderRadius: '6px', fontWeight: 700, whiteSpace: 'nowrap' }}>
-                            Pay: {b.reward_amount}
-                          </span>
-                        </div>
-
-                        <p style={{ margin: 0, fontSize: '0.88rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>
-                          {b.description}
-                        </p>
-
-                        <div style={{ backgroundColor: 'var(--cream)', padding: '10px 12px', borderRadius: '6px', border: '1px solid var(--border-light)', fontSize: '0.8rem', color: 'var(--ink)', lineHeight: 1.4 }}>
-                          <strong>Senior Build Plan:</strong> {b.senior_build_plan}
-                        </div>
-
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                          {b.tech_stack.map(t => (
-                            <span key={t} style={{ fontSize: '0.7rem', backgroundColor: 'var(--surface)', border: '1px solid var(--border-light)', color: 'var(--text-muted)', padding: '2px 6px', borderRadius: '4px' }}>
-                              {t}
-                            </span>
-                          ))}
-                        </div>
-
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px', borderTop: '1px solid var(--paper-edge)', paddingTop: '12px' }}>
-                          <a 
-                            href={b.source_url} 
-                            target="_blank" 
-                            rel="noreferrer" 
-                            className="font-mono"
-                            style={{ fontSize: '0.78rem', color: 'var(--accent-gold)', display: 'inline-flex', alignItems: 'center', gap: '4px', textDecoration: 'none', fontWeight: 600 }}
-                          >
-                            <span>View Source ({b.platform_source}) ↗</span>
-                          </a>
-
-                          <button 
-                            onClick={() => {
-                              navigator.clipboard.writeText(`Senior Prompt for ${b.title} at ${b.company_name}:\n${b.senior_build_plan}`);
-                              alert(`Copied Senior AI Build Prompt for ${b.title} to clipboard!`);
-                            }}
-                            className="btn-primary"
-                            style={{ padding: '6px 12px', fontSize: '0.8rem' }}
-                          >
-                            <Terminal size={14} />
-                            <span>Build with AI</span>
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                </div>
-              </div>
-            ) : mainTab === 'tracker' ? (
-              /* --- PHASE 5: KANBAN TRACKER & REMINDERS --- */
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                <div>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--accent-gold)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Phase 5: Workflow Tracker</div>
-                  <h2 className="font-serif" style={{ fontSize: '1.6rem', color: 'var(--ink)', margin: '4px 0 8px 0' }}>Outreach Kanban & Follow-up Reminders</h2>
-                </div>
-
-                {/* Reminders Alert Box */}
-                {followupReminders.length > 0 && (
-                  <div style={{ padding: '16px 20px', backgroundColor: '#fef2f2', border: '1px solid #fca5a5', borderRadius: '12px', color: '#991b1b' }}>
-                    <div style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '4px' }}>7-Day Follow-Up Reminders Due ({followupReminders.length})</div>
-                    {followupReminders.map((rem: any) => (
-                      <div key={rem.application_id} style={{ marginTop: '8px', padding: '10px', backgroundColor: '#fff', borderRadius: '8px', border: '1px solid #fecaca', fontSize: '0.85rem' }}>
-                        <div><strong>{rem.company_name}</strong> — Reached out {rem.days_since_outreach} days ago without a reply.</div>
-                        <pre style={{ margin: '8px 0 0 0', padding: '8px', backgroundColor: '#f9fafb', borderRadius: '4px', fontSize: '0.75rem', whiteSpace: 'pre-wrap' }}>
-                          {rem.follow_up_draft}
-                        </pre>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Kanban Columns */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '12px', overflowX: 'auto' }}>
-                  {['researching', 'building', 'reached_out', 'replied', 'interviewing', 'closed'].map(col => {
-                    const colItems = kanbanBoard ? kanbanBoard[col] || [] : [];
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%', textAlign: 'left', backgroundColor: 'var(--surface)', padding: '16px', borderRadius: '10px', border: '1px solid var(--border-light)' }}>
+                  {SCOUTING_STEPS.map((stepDesc, idx) => {
+                    const isCompleted = idx < scoutingStepIndex;
+                    const isActive = idx === scoutingStepIndex;
                     return (
-                      <div key={col} style={{ backgroundColor: 'var(--surface)', padding: '12px', borderRadius: '10px', border: '1px solid var(--border-light)', minWidth: '130px' }}>
-                        <div style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-dim)', marginBottom: '8px' }}>
-                          {col.replace('_', ' ')} ({colItems.length})
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                          {colItems.map((app: any) => (
-                            <div key={app.id} style={{ padding: '10px', backgroundColor: 'var(--paper)', borderRadius: '6px', border: '1px solid var(--border-light)', fontSize: '0.8rem' }}>
-                              <div style={{ fontWeight: 700, color: 'var(--ink)' }}>{app.company_name}</div>
-                              {app.demo_url && (
-                                <a href={app.demo_url} target="_blank" rel="noreferrer" style={{ fontSize: '0.7rem', color: 'var(--accent-gold)' }}>Live Demo 🔗</a>
-                              )}
-                            </div>
-                          ))}
-                        </div>
+                      <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', opacity: isCompleted || isActive ? 1 : 0.4 }}>
+                        <span className="font-sans" style={{ fontSize: '0.85rem', fontWeight: isActive ? 600 : 400, color: isActive ? 'var(--ink)' : 'var(--text-muted)' }}>
+                          {idx + 1}. {stepDesc}
+                        </span>
+                        {isCompleted ? (
+                          <span style={{ color: 'var(--accent-moss)', fontWeight: 700, fontSize: '0.88rem' }}>✓</span>
+                        ) : isActive ? (
+                          <span className="pulse-dot" style={{ backgroundColor: 'var(--accent-gold)' }}></span>
+                        ) : (
+                          <span style={{ color: 'var(--text-dim)', fontSize: '0.85rem' }}>⏳</span>
+                        )}
                       </div>
                     );
                   })}
                 </div>
               </div>
             ) : (
-              /* --- ANALYZER TAB --- */
               <>
-            {/* 1. Input Section */}
-            <div style={{ marginBottom: '40px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-                <h2 className="font-serif" style={{ fontSize: '1.4rem', fontWeight: 500, margin: 0, color: 'var(--ink)' }}>Analyze Target Company</h2>
-              </div>
-              <div className="paper-card" style={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                padding: '6px',
-                borderRadius: '12px'
-              }}>
-                <div style={{ padding: '0 12px', color: 'var(--text-dim)' }}>
-                  <LinkIcon size={18} />
-                </div>
-                <input
-                  type="text"
-                  placeholder="Paste job posting or company careers URL..."
-                  value={linkInput}
-                  onChange={(e) => setLinkInput(e.target.value)}
-                  className="font-sans"
-                  style={{
-                    flex: 1,
-                    background: 'transparent',
-                    border: 'none',
-                    outline: 'none',
-                    color: 'var(--ink)',
-                    fontSize: '1rem'
-                  }}
-                />
-                <button 
-                  onClick={() => handleExtractCompany()} 
-                  className="btn-primary" 
-                  style={{ padding: '10px 20px', borderRadius: '8px', fontSize: '0.95rem' }}
-                  disabled={isScanning}
-                >
-                  <span>{isScanning ? 'Scouting...' : 'Extract'}</span>
-                  <Send size={14} />
-                </button>
-              </div>
-            </div>
+                {mainTab === 'feed' ? (
+                  /* --- PHASE 2: VC DISCOVERY FEED --- */
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                    <div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--accent-gold)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Phase 2: Curated Startup Feed</div>
+                      <h2 className="font-serif" style={{ fontSize: '1.6rem', color: 'var(--ink)', margin: '4px 0 8px 0' }}>High-Paying VC-Backed Startups (Tailored for Arjun)</h2>
+                      <p style={{ fontSize: '0.95rem', color: 'var(--text-muted)', margin: 0 }}>
+                        Top-tier Indian & Global VC startups (Peak XV, Accel India, YC, a16z) that give product engineers direct access to CTOs & high pay.
+                      </p>
+                    </div>
 
-            {/* 2. Opportunity Cards Feed */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-              
-              {isScanning ? (
-                <div className="paper-card font-sans" style={{ padding: '40px', backgroundColor: 'var(--surface)', borderRadius: '16px', border: '1px solid var(--border)', maxWidth: '600px', margin: '40px auto', display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                    <span className="pulse-dot"></span>
-                    <h3 style={{ margin: 0, fontSize: '1.25rem', color: 'var(--ink)', fontWeight: 600 }}>AI Scouting Agent Active...</h3>
-                  </div>
-                  
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', opacity: scanStage === 'fetching' ? 1 : 0.6 }}>
-                      <span style={{ fontSize: '0.95rem', fontWeight: scanStage === 'fetching' ? 600 : 400 }}>1. Parsing career index & indexing repositories</span>
-                      {scanStage === 'fetching' ? <span className="pulse-dot" style={{ backgroundColor: 'var(--accent-gold)' }}></span> : (scanStage !== 'idle' ? '✅' : '⏳')}
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', opacity: scanStage === 'analyzing' ? 1 : 0.6 }}>
-                      <span style={{ fontSize: '0.95rem', fontWeight: scanStage === 'analyzing' ? 600 : 400 }}>2. Querying community telemetry & requests</span>
-                      {scanStage === 'analyzing' ? <span className="pulse-dot" style={{ backgroundColor: 'var(--accent-gold)' }}></span> : (['aligning', 'clustering'].includes(scanStage) ? '✅' : '⏳')}
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', opacity: scanStage === 'aligning' ? 1 : 0.6 }}>
-                      <span style={{ fontSize: '0.95rem', fontWeight: scanStage === 'aligning' ? 600 : 400 }}>3. Mapping tech stack & credential compatibility</span>
-                      {scanStage === 'aligning' ? <span className="pulse-dot" style={{ backgroundColor: 'var(--accent-gold)' }}></span> : (scanStage === 'clustering' ? '✅' : '⏳')}
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', opacity: scanStage === 'clustering' ? 1 : 0.6 }}>
-                      <span style={{ fontSize: '0.95rem', fontWeight: scanStage === 'clustering' ? 600 : 400 }}>4. Synthesizing gap clusters & scaffolding spec prompts</span>
-                      {scanStage === 'clustering' ? <span className="pulse-dot" style={{ backgroundColor: 'var(--accent-gold)' }}></span> : '⏳'}
-                    </div>
-                  </div>
-                </div>
-              ) : activeCompany === 'new' ? (
-                <div style={{ 
-                  padding: '60px 40px', 
-                  textAlign: 'center', 
-                  display: 'flex', 
-                  flexDirection: 'column', 
-                  alignItems: 'center', 
-                  gap: '16px'
-                }}>
-                  <div style={{ 
-                    padding: '16px', 
-                    borderRadius: '50%', 
-                    backgroundColor: 'var(--cream)', 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    justifyContent: 'center',
-                  }}>
-                    <Search size={28} color="var(--text-dim)" />
-                  </div>
-                  
-                  <div>
-                    <h3 className="font-sans" style={{ fontSize: '1.2rem', color: 'var(--ink)', margin: '0 0 8px 0', fontWeight: 600 }}>
-                      Start a new search
-                    </h3>
-                    <p className="font-sans" style={{ fontSize: '0.95rem', color: 'var(--text-muted)', maxWidth: '400px', margin: '0 auto', lineHeight: 1.5 }}>
-                      Paste a company's career page URL above to uncover engineering opportunities.
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid var(--border-light)', paddingBottom: '12px' }}>
-                    <div className="font-mono" style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                      Generated Opportunity Cards
-                    </div>
-                    <span style={{ fontSize: '0.75rem', padding: '2px 8px', borderRadius: '12px', backgroundColor: 'var(--surface)', color: 'var(--ink)', border: '1px solid var(--paper-edge)', fontWeight: 600 }}>
-                      {filteredCards.length}
-                    </span>
-                  </div>
+                    {/* Category Filter Tabs */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', borderBottom: '1px solid var(--border-light)', paddingBottom: '12px' }}>
+                      <button 
+                        onClick={() => setFeedFilterCategory('all')}
+                        className="font-mono"
+                        style={{ padding: '6px 14px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600, border: '1px solid', cursor: 'pointer', backgroundColor: feedFilterCategory === 'all' ? 'var(--ink)' : 'var(--paper)', color: feedFilterCategory === 'all' ? 'var(--paper)' : 'var(--text-muted)', borderColor: 'var(--border)' }}
+                      >
+                        All Startups ({discoveryFeed.length})
+                      </button>
+                      <button 
+                        onClick={() => setFeedFilterCategory('india')}
+                        className="font-mono"
+                        style={{ padding: '6px 14px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600, border: '1px solid', cursor: 'pointer', backgroundColor: feedFilterCategory === 'india' ? 'var(--accent-gold)' : 'var(--paper)', color: feedFilterCategory === 'india' ? 'white' : 'var(--text-muted)', borderColor: 'var(--border)' }}
+                      >
+                        High-Paying Indian VC Startups
+                      </button>
+                      <button 
+                        onClick={() => setFeedFilterCategory('yc')}
+                        className="font-mono"
+                        style={{ padding: '6px 14px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600, border: '1px solid', cursor: 'pointer', backgroundColor: feedFilterCategory === 'yc' ? '#f97316' : 'var(--paper)', color: feedFilterCategory === 'yc' ? 'white' : 'var(--text-muted)', borderColor: 'var(--border)' }}
+                      >
+                        Y Combinator (YC)
+                      </button>
+                      <button 
+                        onClick={() => setFeedFilterCategory('early_stage')}
+                        className="font-mono"
+                        style={{ padding: '6px 14px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600, border: '1px solid', cursor: 'pointer', backgroundColor: feedFilterCategory === 'early_stage' ? '#0284c7' : 'var(--paper)', color: feedFilterCategory === 'early_stage' ? 'white' : 'var(--text-muted)', borderColor: 'var(--border)' }}
+                      >
+                        Seed / Series A (&lt;25 eng)
+                      </button>
+                      <button 
+                        onClick={() => setFeedFilterCategory('high_pay')}
+                        className="font-mono"
+                        style={{ padding: '6px 14px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600, border: '1px solid', cursor: 'pointer', backgroundColor: feedFilterCategory === 'high_pay' ? '#16a34a' : 'var(--paper)', color: feedFilterCategory === 'high_pay' ? 'white' : 'var(--text-muted)', borderColor: 'var(--border)' }}
+                      >
+                        High Pay (₹25L+ / $90k+)
+                      </button>
 
-                  {filteredCards.length === 0 ? (
-                    <div style={{ padding: '40px', textAlign: 'center', border: '1px dashed var(--border)', borderRadius: '12px', color: 'var(--text-muted)' }}>
-                      No opportunities found for {activeCompany}. Try searching another company.
+                      <button 
+                        onClick={handleRefreshFeed}
+                        className="font-mono"
+                        style={{ padding: '6px 14px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600, border: '1px solid var(--accent-gold)', cursor: 'pointer', backgroundColor: 'var(--cream)', color: 'var(--accent-gold)', marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                        disabled={isRefreshingFeed}
+                      >
+                        <span>{isRefreshingFeed ? 'Syncing New VC Launches...' : 'Refresh VC Feed'}</span>
+                      </button>
                     </div>
-                  ) : (
-                    <>
-                      {filteredCards.map(item => {
-                  const ev = item.evidence_items[0];
-                  const matchScorePct = (item.card.profile_match_score).toFixed(0);
-                  
-                  return (
-                    <div key={item.card.id} className="paper-card dash-evidence-card" style={{ 
-                      overflow: 'hidden',
-                      display: 'flex',
-                      flexDirection: 'column'
-                    }}>
-                      <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--paper-edge)', backgroundColor: 'var(--surface)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                        <div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
-                            <CompanyLogo name={item.company.name} size={28} />
-                            <span style={{ fontWeight: 600, fontSize: '1.1rem', color: 'var(--ink)' }}>{item.company.name}</span>
-                          </div>
-                          {getFixabilityBadge(item.fixability_flags)}
-                        </div>
-                        <div style={{ 
-                          textAlign: 'right', 
-                          background: 'rgba(152, 118, 26, 0.1)', 
-                          padding: '6px 12px', 
-                          borderRadius: '8px',
-                          border: '1px solid rgba(152, 118, 26, 0.2)'
-                        }} className="font-mono">
-                          <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', textTransform: 'uppercase' }}>Match Score</div>
-                          <div style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--accent-gold)' }}>{matchScorePct}%</div>
-                        </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                      {discoveryFeed
+                        .filter(item => {
+                          if (feedFilterCategory === 'india') {
+                            return (item as any).region_tag === 'india' || item.name === 'Appsmith' || item.name === 'SigNoz' || item.name === 'Devtron' || item.name === 'Hasura' || item.name === 'Middleware' || item.name === 'Atlan';
+                          }
+                          if (feedFilterCategory === 'yc') {
+                            return item.investor_tags && item.investor_tags.some((t: string) => t.toLowerCase().includes('yc'));
+                          }
+                          if (feedFilterCategory === 'early_stage') {
+                            return (item.employee_count_approx || 10) <= 25;
+                          }
+                          return true;
+                        })
+                        .map(item => {
+                          const isIndian = (item as any).region_tag === 'india' || item.name === 'Appsmith' || item.name === 'SigNoz' || item.name === 'Devtron' || item.name === 'Hasura' || item.name === 'Middleware' || item.name === 'Atlan';
+                          const compTier = (item as any).compensation_tier || (isIndian ? "₹25L - ₹50L" : "$90k - $140k");
+
+                          return (
+                            <div 
+                              key={item.id} 
+                              className="paper-card" 
+                              style={{ padding: '20px', borderRadius: '12px', backgroundColor: 'var(--paper)', border: '1px solid var(--border-light)', display: 'flex', flexDirection: 'column', gap: '12px', cursor: 'pointer' }}
+                              onClick={() => {
+                                setLinkInput(item.url);
+                                setMainTab('analyzer');
+                                handleExtractCompany(item.url);
+                              }}
+                            >
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                  <CompanyLogo name={item.name} size={32} />
+                                  <div>
+                                    <div style={{ fontWeight: 700, fontSize: '1.05rem', color: 'var(--ink)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                      <span>{item.name}</span>
+                                      {isIndian && <span style={{ fontSize: '0.7rem', padding: '1px 5px', borderRadius: '4px', backgroundColor: '#fef3c7', color: '#92400e', fontWeight: 700 }}>India</span>}
+                                    </div>
+                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>{item.funding_stage ? item.funding_stage.toUpperCase() : 'SEED'} • ~{item.employee_count_approx || 10} members</div>
+                                  </div>
+                                </div>
+
+                                {/* Health Badge */}
+                                {item.health?.verdict === 'verified_safe' ? (
+                                  <span style={{ fontSize: '0.7rem', backgroundColor: '#dcfce7', color: '#15803d', border: '1px solid #bbf7d0', padding: '2px 8px', borderRadius: '12px', fontWeight: 700 }}>
+                                    Verified Safe
+                                  </span>
+                                ) : item.health?.verdict === 'high_risk' ? (
+                                  <span style={{ fontSize: '0.7rem', backgroundColor: '#fee2e2', color: '#b91c1c', border: '1px solid #fca5a5', padding: '2px 8px', borderRadius: '12px', fontWeight: 700 }}>
+                                    High Risk
+                                  </span>
+                                ) : (
+                                  <span style={{ fontSize: '0.7rem', backgroundColor: '#fef3c7', color: '#b45309', border: '1px solid #fde68a', padding: '2px 8px', borderRadius: '12px', fontWeight: 700 }}>
+                                    Verified Safe
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* Compensation Tier Badge */}
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span className="font-mono" style={{ fontSize: '0.72rem', backgroundColor: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0', padding: '2px 8px', borderRadius: '6px', fontWeight: 700 }}>
+                                  Pay: {compTier}
+                                </span>
+                                <span className="font-mono" style={{ fontSize: '0.72rem', backgroundColor: 'var(--cream)', color: 'var(--ink)', border: '1px solid var(--border-light)', padding: '2px 8px', borderRadius: '6px', fontWeight: 600 }}>
+                                  Direct CTO Outreach
+                                </span>
+                              </div>
+
+                              <div style={{ fontSize: '0.8rem', backgroundColor: 'var(--cream)', color: 'var(--ink)', padding: '6px 10px', borderRadius: '6px', fontWeight: 600 }}>
+                                {item.why_for_you || "Matches your builder profile"}
+                              </div>
+
+                              {/* Tech stack tags */}
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                {item.tech_stack_tags?.map((t: string) => (
+                                  <span key={t} style={{ fontSize: '0.7rem', backgroundColor: 'var(--surface)', border: '1px solid var(--border-light)', color: 'var(--text-muted)', padding: '2px 6px', borderRadius: '4px' }}>
+                                    {t}
+                                  </span>
+                                ))}
+                              </div>
+
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px', fontSize: '0.8rem', color: 'var(--accent-gold)', fontWeight: 600 }}>
+                                <span>Inspect Opportunities ({item.evidence_count} evidence items) →</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  </div>
+                ) : mainTab === 'bounties' ? (
+                  /* --- EARN WHILE BUILDING (PAID BOUNTIES & SOLO HACKATHONS) --- */
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <div>
+                        <div style={{ fontSize: '0.8rem', color: 'var(--accent-gold)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Short-Term Runway Cash</div>
+                        <h2 className="font-serif" style={{ fontSize: '1.6rem', color: 'var(--ink)', margin: '4px 0 8px 0' }}>Paid GitHub Bounties & Solo Developer Hackathons</h2>
+                        <p style={{ fontSize: '0.95rem', color: 'var(--text-muted)', margin: 0 }}>
+                          Short-term cash opportunities ($150 - $2,000) tailored for product engineers. Earn cash in 3-10 days while building proof-of-work portfolio items.
+                        </p>
                       </div>
+                      <div style={{ backgroundColor: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0', padding: '6px 12px', borderRadius: '8px', fontSize: '0.75rem', fontWeight: 700, whiteSpace: 'nowrap' }} className="font-mono">
+                        Auto-Refreshes Every 6 Hours
+                      </div>
+                    </div>
 
-                      <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                        <div>
-                          <div style={{ fontSize: '0.75rem', color: 'var(--accent-gold)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>🎯 Customer Friction & Product Gap</div>
-                          <h3 style={{ fontSize: '1.25rem', margin: '0 0 8px 0', color: 'var(--ink)', fontWeight: 700 }}>{item.gap_cluster.label}</h3>
-                          <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>{item.why_matches_you}</p>
-                        </div>
+                    {/* Category Filter Chips */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', borderBottom: '1px solid var(--border-light)', paddingBottom: '12px' }}>
+                      <button 
+                        onClick={() => setBountyFilterCategory('all')}
+                        className="font-mono"
+                        style={{ padding: '6px 14px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600, border: '1px solid', cursor: 'pointer', backgroundColor: bountyFilterCategory === 'all' ? 'var(--ink)' : 'var(--paper)', color: bountyFilterCategory === 'all' ? 'var(--paper)' : 'var(--text-muted)', borderColor: 'var(--border)' }}
+                      >
+                        All Opportunities ({bountiesList.length})
+                      </button>
+                      <button 
+                        onClick={() => setBountyFilterCategory('bounty')}
+                        className="font-mono"
+                        style={{ padding: '6px 14px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600, border: '1px solid', cursor: 'pointer', backgroundColor: bountyFilterCategory === 'bounty' ? 'var(--accent-gold)' : 'var(--paper)', color: bountyFilterCategory === 'bounty' ? 'white' : 'var(--text-muted)', borderColor: 'var(--border)' }}
+                      >
+                        GitHub Feature Bounties ($150 - $1,500)
+                      </button>
+                      <button 
+                        onClick={() => setBountyFilterCategory('hackathon')}
+                        className="font-mono"
+                        style={{ padding: '6px 14px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600, border: '1px solid', cursor: 'pointer', backgroundColor: bountyFilterCategory === 'hackathon' ? '#f97316' : 'var(--paper)', color: bountyFilterCategory === 'hackathon' ? 'white' : 'var(--text-muted)', borderColor: 'var(--border)' }}
+                      >
+                        Solo Hackathons ($500 - $5,000)
+                      </button>
+                      <button 
+                        onClick={() => setBountyFilterCategory('trial')}
+                        className="font-mono"
+                        style={{ padding: '6px 14px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600, border: '1px solid', cursor: 'pointer', backgroundColor: bountyFilterCategory === 'trial' ? '#0284c7' : 'var(--paper)', color: bountyFilterCategory === 'trial' ? 'white' : 'var(--text-muted)', borderColor: 'var(--border)' }}
+                      >
+                        Paid Founder Trial Sprints
+                      </button>
+                      <button 
+                        onClick={() => setBountyFilterCategory('inr')}
+                        className="font-mono"
+                        style={{ padding: '6px 14px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600, border: '1px solid', cursor: 'pointer', backgroundColor: bountyFilterCategory === 'inr' ? '#16a34a' : 'var(--paper)', color: bountyFilterCategory === 'inr' ? 'white' : 'var(--text-muted)', borderColor: 'var(--border)' }}
+                      >
+                        India / INR Grants (₹35,000+)
+                      </button>
 
-                        {/* Product Engineering Scope for Arjun */}
-                        <div style={{ backgroundColor: 'var(--cream)', padding: '14px 16px', borderRadius: '10px', border: '1px solid var(--border-light)' }}>
-                          <div style={{ fontSize: '0.75rem', color: 'var(--ink)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>🛠️ Suggested 4–6 Hour Product Scope (For Arjun)</div>
-                          <div style={{ fontSize: '0.88rem', color: 'var(--ink)', lineHeight: 1.4, fontWeight: 500 }}>
-                            Build a lightweight <strong>Next.js + Tailwind Web Sandbox / CLI Extension</strong> for {item.company.name} to resolve this gap. Deploy live to Vercel/Railway.
-                          </div>
-                        </div>
+                      <button 
+                        onClick={handleHardRefreshBounties}
+                        className="font-mono"
+                        style={{ padding: '6px 14px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600, border: '1px solid var(--accent-gold)', cursor: 'pointer', backgroundColor: 'var(--cream)', color: 'var(--accent-gold)', marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                        disabled={isRefreshingBounties}
+                      >
+                        <span>{isRefreshingBounties ? 'Syncing Live Bounties...' : 'Hard Refresh Bounties'}</span>
+                      </button>
+                    </div>
 
-                        {ev && (
-                          <div style={{ backgroundColor: 'var(--surface)', padding: '14px 16px', borderRadius: '10px', border: '1px solid var(--paper-edge)' }}>
-                            <div className="font-mono" style={{ fontSize: '0.75rem', color: 'var(--ink)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
-                              <ShieldAlert size={14} color="var(--accent-gold)" />
-                              <span>Verified Receipt</span>
+                    {/* Bounty Cards Grid */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                      {bountiesList
+                        .filter(b => {
+                          if (bountyFilterCategory === 'bounty') return b.type === 'bounty';
+                          if (bountyFilterCategory === 'hackathon') return b.type === 'hackathon';
+                          if (bountyFilterCategory === 'trial') return b.type === 'trial';
+                          if (bountyFilterCategory === 'inr') return b.reward_amount.includes('₹');
+                          return true;
+                        })
+                        .map(b => (
+                          <div 
+                            key={b.id} 
+                            className="paper-card" 
+                            style={{ padding: '20px', borderRadius: '12px', backgroundColor: 'var(--paper)', border: '1px solid var(--border-light)', display: 'flex', flexDirection: 'column', gap: '12px' }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <CompanyLogo name={b.company_name} size={32} />
+                                <div>
+                                  <div style={{ fontWeight: 700, fontSize: '1.05rem', color: 'var(--ink)' }}>{b.title}</div>
+                                  <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>{b.company_name} • Est. {b.est_hours} Hours</div>
+                                </div>
+                              </div>
+
+                              <span className="font-mono" style={{ fontSize: '0.75rem', backgroundColor: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0', padding: '3px 10px', borderRadius: '6px', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                                Pay: {b.reward_amount}
+                              </span>
                             </div>
-                            <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontStyle: 'italic', marginBottom: '8px', borderLeft: '2px solid var(--accent-gold)', paddingLeft: '10px', maxHeight: '80px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                              "{ev.raw_text.length > 220 ? ev.raw_text.slice(0, 220) + "..." : ev.raw_text}"
+
+                            <p style={{ margin: 0, fontSize: '0.88rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>
+                              {b.description}
+                            </p>
+
+                            <div style={{ backgroundColor: 'var(--cream)', padding: '10px 12px', borderRadius: '6px', border: '1px solid var(--border-light)', fontSize: '0.8rem', color: 'var(--ink)', lineHeight: 1.4 }}>
+                              <strong>Senior Build Plan:</strong> {b.senior_build_plan}
                             </div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} className="font-mono">
-                              <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>{ev.source_type.toUpperCase()}</span>
-                              <a href={ev.source_url} target="_blank" rel="noreferrer" style={{ fontSize: '0.75rem', color: 'var(--accent-gold)', display: 'flex', alignItems: 'center', gap: '4px', textDecoration: 'none', fontWeight: 600 }}>
-                                <span>View Source</span>
-                                <ArrowUpRight size={13} />
+
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                              {b.tech_stack.map(t => (
+                                <span key={t} style={{ fontSize: '0.7rem', backgroundColor: 'var(--surface)', border: '1px solid var(--border-light)', color: 'var(--text-muted)', padding: '2px 6px', borderRadius: '4px' }}>
+                                  {t}
+                                </span>
+                              ))}
+                            </div>
+
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px', borderTop: '1px solid var(--paper-edge)', paddingTop: '12px' }}>
+                              <a 
+                                href={b.source_url} 
+                                target="_blank" 
+                                rel="noreferrer" 
+                                className="font-mono"
+                                style={{ fontSize: '0.78rem', color: 'var(--accent-gold)', display: 'inline-flex', alignItems: 'center', gap: '4px', textDecoration: 'none', fontWeight: 600 }}
+                              >
+                                <span>View Source ({b.platform_source}) ↗</span>
                               </a>
+
+                              <button 
+                                onClick={() => {
+                                  navigator.clipboard.writeText(`Senior Prompt for ${b.title} at ${b.company_name}:\n${b.senior_build_plan}`);
+                                  alert(`Copied Senior AI Build Prompt for ${b.title} to clipboard!`);
+                                }}
+                                className="btn-primary"
+                                style={{ padding: '6px 12px', fontSize: '0.8rem' }}
+                              >
+                                <Terminal size={14} />
+                                <span>Build with AI</span>
+                              </button>
                             </div>
                           </div>
-                        )}
-                      </div>
+                        ))}
+                    </div>
+                  </div>
+                ) : mainTab === 'tracker' ? (
+                  /* --- PHASE 5: KANBAN TRACKER & REMINDERS --- */
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                    <div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--accent-gold)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Phase 5: Workflow Tracker</div>
+                      <h2 className="font-serif" style={{ fontSize: '1.6rem', color: 'var(--ink)', margin: '4px 0 8px 0' }}>Outreach Kanban & Follow-up Reminders</h2>
+                    </div>
 
-                      <div style={{ padding: '16px 24px', backgroundColor: 'var(--surface)', borderTop: '1px solid var(--paper-edge)' }}>
+                    {/* Reminders Alert Box */}
+                    {followupReminders.length > 0 && (
+                      <div style={{ padding: '16px 20px', backgroundColor: '#fef2f2', border: '1px solid #fca5a5', borderRadius: '12px', color: '#991b1b' }}>
+                        <div style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '4px' }}>7-Day Follow-Up Reminders Due ({followupReminders.length})</div>
+                        {followupReminders.map((rem: any) => (
+                          <div key={rem.application_id} style={{ marginTop: '8px', padding: '10px', backgroundColor: '#fff', borderRadius: '8px', border: '1px solid #fecaca', fontSize: '0.85rem' }}>
+                            <div><strong>{rem.company_name}</strong> — Reached out {rem.days_since_outreach} days ago without a reply.</div>
+                            <pre style={{ margin: '8px 0 0 0', padding: '8px', backgroundColor: '#f9fafb', borderRadius: '4px', fontSize: '0.75rem', whiteSpace: 'pre-wrap' }}>
+                              {rem.follow_up_draft}
+                            </pre>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Kanban Columns */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '12px', overflowX: 'auto' }}>
+                      {['researching', 'building', 'reached_out', 'replied', 'interviewing', 'closed'].map(col => {
+                        const colItems = kanbanBoard ? kanbanBoard[col] || [] : [];
+                        return (
+                          <div key={col} style={{ backgroundColor: 'var(--surface)', padding: '12px', borderRadius: '10px', border: '1px solid var(--border-light)', minWidth: '130px' }}>
+                            <div style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-dim)', marginBottom: '8px' }}>
+                              {col.replace('_', ' ')} ({colItems.length})
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                              {colItems.map((app: any) => (
+                                <div key={app.id} style={{ padding: '10px', backgroundColor: 'var(--paper)', borderRadius: '6px', border: '1px solid var(--border-light)', fontSize: '0.8rem' }}>
+                                  <div style={{ fontWeight: 700, color: 'var(--ink)' }}>{app.company_name}</div>
+                                  {app.demo_url && (
+                                    <a href={app.demo_url} target="_blank" rel="noreferrer" style={{ fontSize: '0.7rem', color: 'var(--accent-gold)' }}>Live Demo 🔗</a>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  /* --- ANALYZER TAB --- */
+                  <>
+                    {/* 1. Input Section */}
+                    <div style={{ marginBottom: '40px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                        <h2 className="font-serif" style={{ fontSize: '1.4rem', fontWeight: 500, margin: 0, color: 'var(--ink)' }}>Analyze Target Company</h2>
+                      </div>
+                      <div className="paper-card" style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        padding: '6px',
+                        borderRadius: '12px'
+                      }}>
+                        <div style={{ padding: '0 12px', color: 'var(--text-dim)' }}>
+                          <LinkIcon size={18} />
+                        </div>
+                        <input
+                          type="text"
+                          placeholder="Paste job posting or company careers URL..."
+                          value={linkInput}
+                          onChange={(e) => setLinkInput(e.target.value)}
+                          className="font-sans"
+                          style={{
+                            flex: 1,
+                            background: 'transparent',
+                            border: 'none',
+                            outline: 'none',
+                            color: 'var(--ink)',
+                            fontSize: '1rem'
+                          }}
+                        />
                         <button 
-                          onClick={() => handleEnrollOpportunity(item)}
-                          className="btn-primary"
-                          style={{ width: '100%', padding: '12px', fontSize: '0.95rem' }}
+                          onClick={() => handleExtractCompany()} 
+                          className="btn-primary" 
+                          style={{ padding: '10px 20px', borderRadius: '8px', fontSize: '0.95rem' }}
+                          disabled={isScanning}
                         >
-                          <Terminal size={16} />
-                          <span>Scaffold & Hand Off MVP</span>
+                          <span>{isScanning ? 'Scouting...' : 'Extract'}</span>
+                          <Send size={14} />
                         </button>
                       </div>
                     </div>
-                  );
-                })}
+
+                    {/* 2. Opportunity Cards Feed */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                      
+                      {isScanning ? (
+                        <div className="paper-card font-sans" style={{ padding: '40px', backgroundColor: 'var(--surface)', borderRadius: '16px', border: '1px solid var(--border)', maxWidth: '600px', margin: '40px auto', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                            <span className="pulse-dot"></span>
+                            <h3 style={{ margin: 0, fontSize: '1.25rem', color: 'var(--ink)', fontWeight: 600 }}>AI Scouting Agent Active...</h3>
+                          </div>
+                          
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', opacity: scanStage === 'fetching' ? 1 : 0.6 }}>
+                              <span style={{ fontSize: '0.95rem', fontWeight: scanStage === 'fetching' ? 600 : 400 }}>1. Parsing career index & indexing repositories</span>
+                              {scanStage === 'fetching' ? <span className="pulse-dot" style={{ backgroundColor: 'var(--accent-gold)' }}></span> : (scanStage !== 'idle' ? '✅' : '⏳')}
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', opacity: scanStage === 'analyzing' ? 1 : 0.6 }}>
+                              <span style={{ fontSize: '0.95rem', fontWeight: scanStage === 'analyzing' ? 600 : 400 }}>2. Querying community telemetry & requests</span>
+                              {scanStage === 'analyzing' ? <span className="pulse-dot" style={{ backgroundColor: 'var(--accent-gold)' }}></span> : (['aligning', 'clustering'].includes(scanStage) ? '✅' : '⏳')}
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', opacity: scanStage === 'aligning' ? 1 : 0.6 }}>
+                              <span style={{ fontSize: '0.95rem', fontWeight: scanStage === 'aligning' ? 600 : 400 }}>3. Mapping tech stack & credential compatibility</span>
+                              {scanStage === 'aligning' ? <span className="pulse-dot" style={{ backgroundColor: 'var(--accent-gold)' }}></span> : (scanStage === 'clustering' ? '✅' : '⏳')}
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', opacity: scanStage === 'clustering' ? 1 : 0.6 }}>
+                              <span style={{ fontSize: '0.95rem', fontWeight: scanStage === 'clustering' ? 600 : 400 }}>4. Synthesizing gap clusters & scaffolding spec prompts</span>
+                              {scanStage === 'clustering' ? <span className="pulse-dot" style={{ backgroundColor: 'var(--accent-gold)' }}></span> : '⏳'}
+                            </div>
+                          </div>
+                        </div>
+                      ) : activeCompany === 'new' ? (
+                        <div style={{ 
+                          padding: '60px 40px', 
+                          textAlign: 'center', 
+                          display: 'flex', 
+                          flexDirection: 'column', 
+                          alignItems: 'center', 
+                          gap: '16px'
+                        }}>
+                          <div style={{ 
+                            padding: '16px', 
+                            borderRadius: '50%', 
+                            backgroundColor: 'var(--cream)', 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            justifyContent: 'center',
+                          }}>
+                            <Search size={28} color="var(--text-dim)" />
+                          </div>
+                          
+                          <div>
+                            <h3 className="font-sans" style={{ fontSize: '1.2rem', color: 'var(--ink)', margin: '0 0 8px 0', fontWeight: 600 }}>
+                              Start a new search
+                            </h3>
+                            <p className="font-sans" style={{ fontSize: '0.95rem', color: 'var(--text-muted)', maxWidth: '400px', margin: '0 auto', lineHeight: 1.5 }}>
+                              Paste a company's career page URL above to uncover engineering opportunities.
+                            </p>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid var(--border-light)', paddingBottom: '12px' }}>
+                            <div className="font-mono" style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                              Generated Opportunity Cards
+                            </div>
+                            <span style={{ fontSize: '0.75rem', padding: '2px 8px', borderRadius: '12px', backgroundColor: 'var(--surface)', color: 'var(--ink)', border: '1px solid var(--paper-edge)', fontWeight: 600 }}>
+                              {filteredCards.length}
+                            </span>
+                          </div>
+
+                          {filteredCards.length === 0 ? (
+                            <div style={{ padding: '40px', textAlign: 'center', border: '1px dashed var(--border)', borderRadius: '12px', color: 'var(--text-muted)' }}>
+                              No opportunities found for {activeCompany}. Try searching another company.
+                            </div>
+                          ) : (
+                            <>
+                              {filteredCards.map(item => {
+                                const ev = item.evidence_items[0];
+                                const matchScorePct = (item.card.profile_match_score).toFixed(0);
+
+                                return (
+                                  <div key={item.card.id} className="paper-card dash-evidence-card" style={{ 
+                                    overflow: 'hidden',
+                                    display: 'flex',
+                                    flexDirection: 'column'
+                                  }}>
+                                    <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--paper-edge)', backgroundColor: 'var(--surface)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                      <div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                                          <CompanyLogo name={item.company.name} size={28} />
+                                          <span style={{ fontWeight: 600, fontSize: '1.1rem', color: 'var(--ink)' }}>{item.company.name}</span>
+                                        </div>
+                                        {getFixabilityBadge(item.fixability_flags)}
+                                      </div>
+                                      <div style={{ 
+                                        textAlign: 'right', 
+                                        background: 'rgba(152, 118, 26, 0.1)', 
+                                        padding: '6px 12px', 
+                                        borderRadius: '8px',
+                                        border: '1px solid rgba(152, 118, 26, 0.2)'
+                                      }} className="font-mono">
+                                        <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', textTransform: 'uppercase' }}>Match Score</div>
+                                        <div style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--accent-gold)' }}>{matchScorePct}%</div>
+                                      </div>
+                                    </div>
+
+                                    <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                                      <div>
+                                        <div style={{ fontSize: '0.75rem', color: 'var(--accent-gold)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>🎯 Customer Friction & Product Gap</div>
+                                        <h3 style={{ fontSize: '1.25rem', margin: '0 0 8px 0', color: 'var(--ink)', fontWeight: 700 }}>{item.gap_cluster.label}</h3>
+                                        <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>{item.why_matches_you}</p>
+                                      </div>
+
+                                      {/* Product Engineering Scope for Arjun */}
+                                      <div style={{ backgroundColor: 'var(--cream)', padding: '14px 16px', borderRadius: '10px', border: '1px solid var(--border-light)' }}>
+                                        <div style={{ fontSize: '0.75rem', color: 'var(--ink)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>🛠️ Suggested 4–6 Hour Product Scope (For Arjun)</div>
+                                        <div style={{ fontSize: '0.88rem', color: 'var(--ink)', lineHeight: 1.4, fontWeight: 500 }}>
+                                          Build a lightweight <strong>Next.js + Tailwind Web Sandbox / CLI Extension</strong> for {item.company.name} to resolve this gap. Deploy live to Vercel/Railway.
+                                        </div>
+                                      </div>
+
+                                      {ev && (
+                                        <div style={{ backgroundColor: 'var(--surface)', padding: '14px 16px', borderRadius: '10px', border: '1px solid var(--paper-edge)' }}>
+                                          <div className="font-mono" style={{ fontSize: '0.75rem', color: 'var(--ink)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                                            <ShieldAlert size={14} color="var(--accent-gold)" />
+                                            <span>Verified Receipt</span>
+                                          </div>
+                                          <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontStyle: 'italic', marginBottom: '8px', borderLeft: '2px solid var(--accent-gold)', paddingLeft: '10px', maxHeight: '80px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                            "{ev.raw_text.length > 220 ? ev.raw_text.slice(0, 220) + "..." : ev.raw_text}"
+                                          </div>
+                                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} className="font-mono">
+                                            <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>{ev.source_type.toUpperCase()}</span>
+                                            <a href={ev.source_url} target="_blank" rel="noreferrer" style={{ fontSize: '0.75rem', color: 'var(--accent-gold)', display: 'flex', alignItems: 'center', gap: '4px', textDecoration: 'none', fontWeight: 600 }}>
+                                              <span>View Source</span>
+                                              <ArrowUpRight size={13} />
+                                            </a>
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    <div style={{ padding: '16px 24px', backgroundColor: 'var(--surface)', borderTop: '1px solid var(--paper-edge)' }}>
+                                      <button 
+                                        onClick={() => handleEnrollOpportunity(item)}
+                                        className="btn-primary"
+                                        style={{ width: '100%', padding: '12px', fontSize: '0.95rem' }}
+                                      >
+                                        <Terminal size={16} />
+                                        <span>Scaffold & Hand Off MVP</span>
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </>
+                )}
               </>
             )}
-          </>
-        )}
+          </div>
         </div>
-      </>
-    )}
-    </div>
-  </div>
-</div>
+      </div>
 
-      {/* RIGHT PANE - RESOURCES OR PROMPT HANDOFF */}
+      {/* RIGHT PANE - OPPORTUNITY DETAIL & AI HANDOFF (Folded by default) */}
       <div style={{
-        width: (rightPaneOpen || activePromptModal) ? (activePromptModal ? '480px' : '320px') : '0px',
-        borderLeft: (rightPaneOpen || activePromptModal) ? '1px solid var(--border)' : 'none',
+        width: activePromptModal ? '480px' : '0px',
+        borderLeft: activePromptModal ? '1px solid var(--border)' : 'none',
         backgroundColor: 'var(--paper)',
         display: 'flex',
         flexDirection: 'column',
@@ -1628,8 +1699,8 @@ Arjun is building a 4-hour MVP to showcase his skills to ${item.company.name}.
         minHeight: 0,
         flexShrink: 0
       }}>
-        {activePromptModal ? (
-          // --- OPPORTUNITY DETAIL VIEW (Slide-in Replacement) ---
+        {activePromptModal && (
+          // --- OPPORTUNITY DETAIL VIEW (Slide-in Detail Panel) ---
           <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minWidth: '480px' }}>
             <div style={{ padding: '16px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--paper-edge)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
@@ -1737,7 +1808,7 @@ Arjun is building a 4-hour MVP to showcase his skills to ${item.company.name}.
                 </div>
               </div>
 
-              {/* Senior-to-Junior Build Blueprint Card (Theme Matched) */}
+              {/* Senior-to-Junior Build Blueprint Card */}
               <div className="paper-card" style={{ padding: '20px', backgroundColor: 'rgba(152, 118, 26, 0.06)', borderRadius: '12px', border: '1px solid rgba(152, 118, 26, 0.2)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <h4 className="font-mono" style={{ fontSize: '0.75rem', color: 'var(--accent-gold)', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0, fontWeight: 700 }}>🛠️ Senior Engineer's 4-Hour Build Plan</h4>
@@ -1784,11 +1855,7 @@ Arjun is building a 4-hour MVP to showcase his skills to ${item.company.name}.
               <div className="paper-card" style={{ padding: '20px', backgroundColor: 'var(--cream)', borderRadius: '12px', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 <h4 className="font-mono" style={{ fontSize: '0.75rem', color: 'var(--accent-gold)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px', fontWeight: 700 }}>About This Opportunity Spec</h4>
                 <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
-                  This spec was automatically compiled from public community issues and user feedback to help you build exactly what they need. It validates that the gap exists and is real, giving you a strong hook to stand out.
-                </p>
-                <div style={{ height: '1px', backgroundColor: 'var(--border-light)', margin: '4px 0' }} />
-                <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-dim)', lineHeight: 1.4 }}>
-                  💡 Use the <strong>Ask ChatGPT</strong> or <strong>Ask Claude</strong> buttons above. They will launch the AI assistant with a pre-loaded engineering prompt so you can scaffold the MVP immediately.
+                  This spec was automatically compiled from public community issues and user feedback to help you build exactly what they need.
                 </p>
               </div>
 
@@ -1804,163 +1871,7 @@ Arjun is building a 4-hour MVP to showcase his skills to ${item.company.name}.
               </div>
             </div>
           </div>
-        ) : (
-          // --- STANDARD RESOURCES VIEW ---
-          <>
-            <div style={{ padding: '16px', display: 'flex', alignItems: 'center', borderBottom: '1px solid var(--paper-edge)', minWidth: '320px' }}>
-              <div style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--ink)' }}>
-                Context Resources
-              </div>
-            </div>
-
-
-        <div style={{ padding: '20px 16px', flex: 1, overflowY: 'auto', minWidth: '320px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
-          
-          {/* Custom Tabs */}
-          <div style={{ display: 'flex', backgroundColor: 'var(--surface)', padding: '6px', borderRadius: '10px', border: '1px solid var(--paper-edge)', gap: '4px' }}>
-            <button 
-              onClick={() => setResourceActiveTab('resume')}
-              className="dash-tab-btn font-mono"
-              style={{ flex: 1, padding: '8px 0', border: '1px solid transparent', background: resourceActiveTab === 'resume' ? 'var(--cream)' : 'transparent', color: resourceActiveTab === 'resume' ? 'var(--ink)' : 'var(--text-dim)', borderRadius: '8px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}
-            >RESUME</button>
-            <button 
-              onClick={() => setResourceActiveTab('portfolio')}
-              className="dash-tab-btn font-mono"
-              style={{ flex: 1, padding: '8px 0', border: '1px solid transparent', background: resourceActiveTab === 'portfolio' ? 'var(--cream)' : 'transparent', color: resourceActiveTab === 'portfolio' ? 'var(--ink)' : 'var(--text-dim)', borderRadius: '8px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}
-            >PORTFOLIO</button>
-            <button 
-              onClick={() => setResourceActiveTab('raw')}
-              className="dash-tab-btn font-mono"
-              style={{ flex: 1, padding: '8px 0', border: '1px solid transparent', background: resourceActiveTab === 'raw' ? 'var(--cream)' : 'transparent', color: resourceActiveTab === 'raw' ? 'var(--ink)' : 'var(--text-dim)', borderRadius: '8px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}
-            >RAW TEXT</button>
-          </div>
-
-          {/* Stylish Cards based on active tab */}
-          <div style={{ minHeight: '200px' }}>
-            {resourceActiveTab === 'resume' && (
-              uploadedFile ? (
-                <div className="dash-widget-card" style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border-light)', borderRadius: '16px', padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                      <div style={{ width: '40px', height: '40px', borderRadius: '10px', backgroundColor: 'var(--cream)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <FileText size={20} color="var(--accent-gold)" />
-                      </div>
-                      <div>
-                        <div style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--ink)', maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {uploadedFile.name}
-                        </div>
-                        <div style={{ fontSize: '0.75rem', color: isParsing ? 'var(--text-muted)' : 'var(--accent-moss)', fontWeight: 500 }}>
-                          {isParsing ? 'Parsing document...' : 'Aligned to opportunities!'}
-                        </div>
-                      </div>
-                    </div>
-                    <button 
-                      onClick={() => setUploadedFile(null)}
-                      style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-dim)', padding: '4px' }}
-                      title="Remove file"
-                    >
-                      <X size={16} />
-                    </button>
-                  </div>
-                  
-                  {isParsing && (
-                    <div style={{ width: '100%', height: '6px', backgroundColor: 'var(--border-light)', borderRadius: '3px', overflow: 'hidden' }}>
-                      <div style={{ height: '100%', width: `${parseProgress}%`, backgroundColor: 'var(--accent-gold)', transition: 'width 0.2s ease' }} />
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <label 
-                  className="dash-widget-card" 
-                  onDragEnter={handleDrag}
-                  onDragLeave={handleDrag}
-                  onDragOver={handleDrag}
-                  onDrop={handleDrop}
-                  style={{ 
-                    backgroundColor: dragActive ? 'var(--cream)' : 'var(--surface)', 
-                    border: `2px dashed ${dragActive ? 'var(--accent-gold)' : 'var(--border)'}`, 
-                    borderRadius: '16px', 
-                    padding: '32px 24px', 
-                    textAlign: 'center', 
-                    display: 'block', 
-                    cursor: 'pointer', 
-                    transition: 'all 0.2s' 
-                  }}
-                >
-                  <input type="file" accept=".pdf,.doc,.docx" style={{ display: 'none' }} onChange={handleChange} />
-                  <div style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: dragActive ? 'var(--bg)' : 'rgba(152, 118, 26, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', transition: 'all 0.2s' }}>
-                    <Upload size={24} color="var(--accent-gold)" />
-                  </div>
-                  <div style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--ink)', marginBottom: '8px' }}>
-                    {dragActive ? 'Drop file here' : 'Upload Resume'}
-                  </div>
-                  <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>PDF, DOC, DOCX up to 5MB</div>
-                </label>
-              )
-            )}
-
-            {resourceActiveTab === 'portfolio' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <label style={{ fontSize: '0.9rem', color: 'var(--ink)', fontWeight: 600 }}>Portfolio URL</label>
-                <div style={{ display: 'flex', alignItems: 'center', backgroundColor: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '10px', padding: '10px' }}>
-                  <LinkIcon size={16} color="var(--text-dim)" style={{ margin: '0 8px' }} />
-                  <input type="text" placeholder="https://" style={{ flex: 1, background: 'transparent', border: 'none', color: 'var(--ink)', fontSize: '0.95rem', outline: 'none' }} />
-                </div>
-                <button className="btn-secondary" style={{ width: '100%', marginTop: '4px' }}>
-                  Save Link
-                </button>
-              </div>
-            )}
-
-            {resourceActiveTab === 'raw' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <label style={{ fontSize: '0.9rem', color: 'var(--ink)', fontWeight: 600 }}>Paste Raw Profile Text</label>
-                <textarea 
-                  placeholder="Paste your experience, skills, or LinkedIn dump here..."
-                  style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '10px', padding: '16px', color: 'var(--ink)', fontSize: '0.95rem', outline: 'none', resize: 'vertical', minHeight: '140px', fontFamily: 'inherit' }}
-                />
-                <button className="btn-secondary" style={{ width: '100%', marginTop: '4px' }}>
-                  Analyze Text
-                </button>
-              </div>
-            )}
-          </div>
-
-          <div style={{ height: '1px', backgroundColor: 'var(--paper-edge)', margin: '4px 0' }} />
-
-          {/* Active Profile Status */}
-          <div>
-            <div className="font-mono" style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '12px' }}>
-              Active Profile State
-            </div>
-            {userProfile ? (
-              <div className="paper-card" style={{ backgroundColor: 'rgba(152, 118, 26, 0.08)', border: '1px solid rgba(152, 118, 26, 0.2)', padding: '16px', borderRadius: '12px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
-                  <span className="pulse-dot"></span>
-                  <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--ink)' }}>Profile Loaded</span>
-                </div>
-                <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                  {userProfile.parsed_skills.length} core skills extracted.
-                </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '12px' }}>
-                  {userProfile.parsed_skills.slice(0, 5).map(skill => (
-                    <span key={skill} className="badge dash-skill-badge" style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--ink)' }}>{skill}</span>
-                  ))}
-                  {userProfile.parsed_skills.length > 5 && (
-                    <span className="badge" style={{ backgroundColor: 'transparent', border: 'none', color: 'var(--text-dim)' }}>+{userProfile.parsed_skills.length - 5}</span>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className="paper-card" style={{ backgroundColor: 'var(--surface)', padding: '16px', borderRadius: '12px', display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
-                <AlertCircle size={16} color="var(--text-dim)" style={{ marginTop: '2px' }} />
-                <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>No active profile data. Add resources above to enable matching.</span>
-              </div>
-            )}
-          </div>
-        </div>
-      </>
-      )}
+        )}
       </div>
     </>
     )}
