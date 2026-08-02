@@ -284,8 +284,16 @@ class Company(Base):
         Text, nullable=False, default="pending"
     )  # "pending" | "scanning" | "done" | "insufficient_signal"
 
-    # Phase 2: VC Feed Metadata
+    # Phase 2: VC Feed & Enrichment Metadata
     funding_stage: Mapped[str | None] = mapped_column(Text, nullable=True)  # "seed" | "series_a" | "series_b" | "growth"
+    funding_total: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_funding_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    yc_batch: Mapped[str | None] = mapped_column(Text, nullable=True)
+    domain: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_urls: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), nullable=False, default=list, server_default=text("'{}'")
+    )
+    last_enriched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     investor_tags: Mapped[list[str]] = mapped_column(
         ARRAY(Text), nullable=False, default=list, server_default=text("'{}'")
     )  # e.g. ["yc", "a16z", "peak_xv", "blume", "accel_india"]
@@ -381,6 +389,12 @@ class JobPosting(Base):
     )
     title: Mapped[str] = mapped_column(Text, nullable=False)
     raw_text: Mapped[str] = mapped_column(Text, nullable=False)
+    jd_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    role_classification: Mapped[str | None] = mapped_column(Text, nullable=True)  # e.g. "genuine_pm", "ic_engineering", "unclear"
+    role_confidence: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
+    tech_stack_needed: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), nullable=False, default=list, server_default=text("'{}'")
+    )
     posted_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -845,3 +859,43 @@ class ApplicationEvent(Base):
     application: Mapped["Application"] = relationship(back_populates="events")
 
 
+class UserCompanyMatch(Base):
+    """
+    user_company_matches table — Stores per-user company match scores and fit explanations.
+    """
+
+    __tablename__ = "user_company_matches"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    job_posting_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("job_postings.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    fit_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    fit_explanation: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    score_breakdown: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    generated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        server_default=text("now()"),
+    )
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "company_id", name="uq_user_company_match"),
+    )

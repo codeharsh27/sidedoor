@@ -826,3 +826,90 @@ async def get_outreach_playbook_endpoint(
     }
 
 
+class CompanyFeedItemResponse(BaseModel):
+    company: str
+    website: str
+    funding: str
+    stage: str
+    role: str
+    role_classification: str
+    fit_score: float
+    fit_explanation: str
+    jd_url: str
+
+
+@router.get("/feed", response_model=list[CompanyFeedItemResponse])
+async def get_personalized_company_feed(
+    user_id: str | None = None,
+    db: AsyncSession = Depends(get_db_session)
+) -> list[dict]:
+    """
+    Personalized Company Scouting & Feed Endpoint.
+    Orchestrates: User context -> Query gen -> Search & fetch -> Enrich -> Score/rank -> Grounded 'Why Fit' -> Serve.
+    """
+    if user_id:
+        try:
+            u_uuid = uuid.UUID(user_id)
+        except ValueError:
+            u_uuid = uuid.UUID("00000000-0000-0000-0000-000000000000")
+    else:
+        u_uuid = uuid.UUID("00000000-0000-0000-0000-000000000000")
+
+    from app.services.context_builder import build_user_context
+    from app.services.query_generator import generate_search_queries
+    from app.services.company_searcher import search_companies
+    from app.services.company_enricher import enrich_company
+    from app.services.company_ranker import score_company
+    from app.services.fit_explainer import generate_fit_explanation
+
+    # 1. Build compact user context
+    context = await build_user_context(u_uuid, db)
+
+    # 2. Generate search queries
+    queries = await generate_search_queries(context)
+
+    # 3. Search and fetch candidate companies
+    candidates = await search_companies(queries)
+
+    feed_items = []
+    for cand in candidates:
+        # 4. Enrich company details
+        enriched = enrich_company(
+            company_name=cand["name"],
+            website_url=cand["website"],
+            jd_text=cand["jd_text"],
+            jd_url=cand["jd_url"]
+        )
+
+        # 5. Score & rank against candidate context
+        fit_score, breakdown = await score_company(
+            company=enriched,
+            user_context=context,
+            jd_title=cand["jd_title"],
+            jd_text=cand["jd_text"]
+        )
+
+        # 6. Generate grounded 'why fit' explanation
+        explanation = await generate_fit_explanation(
+            company=enriched,
+            user_context=context,
+            scores=breakdown
+        )
+
+        feed_items.append({
+            "company": enriched["name"],
+            "website": enriched["website"],
+            "funding": enriched["funding"],
+            "stage": enriched["stage"],
+            "role": cand["jd_title"],
+            "role_classification": breakdown.get("role_classification", "hybrid_builder"),
+            "fit_score": fit_score,
+            "fit_explanation": explanation,
+            "jd_url": cand["jd_url"]
+        })
+
+    # Sort by fit_score descending
+    feed_items.sort(key=lambda x: x["fit_score"], reverse=True)
+    return feed_items
+
+
