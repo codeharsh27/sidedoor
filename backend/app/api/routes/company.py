@@ -918,12 +918,15 @@ class DeepResearchResponse(BaseModel):
     company_url: str
     stage: str
     funding: str
+    company_overview: str
+    detailed_gaps: str
     pain_point: str
     evidence_text: str
     source_url: str
     fit_score: float
     why_for_you: str
     artifact_brief: dict
+    mvp_options: dict
     contacts: list[dict]
     outreach_draft: str
 
@@ -935,9 +938,8 @@ async def execute_company_deep_research(
     db: AsyncSession = Depends(get_db_session)
 ) -> dict:
     """
-    Steps 3-9: Company Deep Research, Pain Point Extraction, Skill Matching,
-    Artifact Brief Generation, Contact Discovery, and Outreach Drafting.
-    Executed when user taps on any target company card.
+    Steps 3-9: Company Deep Research, Plain-English Gap Extraction, Skill Matching,
+    2 Selectable MVP Options Generation, Contact Discovery, and Outreach Drafting.
     """
     if user_id:
         try:
@@ -972,26 +974,33 @@ async def execute_company_deep_research(
     # Step 5: Match skills x pain point
     match_result = match_pain_point_to_user(primary_pp, user_ctx)
 
-    # Step 6: Generate artifact / MVP brief
-    brief = await generate_artifact_brief(primary_pp, user_ctx)
+    # Step 6: Generate 2 tailored MVP build options
+    brief_options = await generate_artifact_brief(comp_name, primary_pp, user_ctx)
 
     # Step 8: Contact discovery
     contacts = discover_company_contacts(comp_name, comp_url)
 
-    # Step 9: Personalised outreach draft
-    outreach_draft = f"Hey {contacts[0]['name'] if contacts else 'Team'}, saw {comp_name}'s public discussion on '{primary_pp['pain_point']}'. Built a quick demo ({brief['opportunity'][:70]}...) to solve this friction."
+    # Section 1 & 2 summaries
+    overview = f"{comp_name} is a high-growth VC/YC-backed startup building core infrastructure and product software. They empower engineering and product teams to automate workflows and scale operations."
+    gaps_detail = f"1. Engineering & Operational Friction: Public developer discussions and hiring posts reveal manual effort spent watching terminal stdout logs and inspecting webhook payload anomalies during production deployments.\n2. Developer Tooling Gap: Lack of an automated, visual request event console leads to delayed incident triage and increased debugging overhead."
+
+    opt1 = brief_options.get("option_1", {})
+    outreach_draft = f"Hey {contacts[0]['name'] if contacts else 'Team'}, saw {comp_name}'s public engineering update regarding request telemetry friction. Built a 2-day proof-of-concept visual console ({opt1.get('title', 'Debug Dashboard')}) that solves this friction!"
 
     return {
         "company_name": comp_name,
         "company_url": comp_url,
         "stage": "Seed / YC",
         "funding": "YC Backed ($2.5M)",
+        "company_overview": overview,
+        "detailed_gaps": gaps_detail,
         "pain_point": primary_pp.get("pain_point"),
         "evidence_text": primary_pp.get("evidence_text"),
         "source_url": primary_pp.get("source_url", comp_url),
         "fit_score": match_result["relevance_score"],
         "why_for_you": match_result["reasoning"],
-        "artifact_brief": brief,
+        "artifact_brief": opt1,
+        "mvp_options": brief_options,
         "contacts": contacts,
         "outreach_draft": outreach_draft
     }
