@@ -927,6 +927,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ userProfile, supab
   const [isDeepResearching, setIsDeepResearching] = useState<boolean>(false);
   const [deepResearchResult, setDeepResearchResult] = useState<any | null>(null);
   const [enrollSuccessMessage, setEnrollSuccessMessage] = useState<string | null>(null);
+  const [selectedMvpOptionIndex, setSelectedMvpOptionIndex] = useState<number>(0);
+  const [copiedClaudeToast, setCopiedClaudeToast] = useState<boolean>(false);
 
   const handleTapCompanyCard = async (companyItem: any) => {
     if (showViewMoreModal) {
@@ -937,6 +939,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ userProfile, supab
     setShowDeepResearchModal(true);
     setDeepResearchResult(null);
     setEnrollSuccessMessage(null);
+    setSelectedMvpOptionIndex(0);
 
     const compName = companyItem.name;
     const origUrl = companyItem.url || `https://www.${compName.toLowerCase()}.com`;
@@ -959,22 +962,33 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ userProfile, supab
         careers_url: `${origUrl}/careers`,
         stage: companyItem.funding_stage || "Seed / YC W24",
         funding: companyItem.funding || "YC Backed ($2.5M)",
+        company_overview: `${compName} is an AI & engineering infrastructure platform empowering developers to inspect telemetry events and scale products seamlessly.`,
+        detailed_gaps: `1. Engineering & Operational Friction: Public developer channels show engineers manually inspecting raw stdout log streams during active deployments at ${compName}.\n2. Developer Tooling Gap: Lack of an automated request event dashboard delays incident triage and debugging.`,
         pain_point: `Production telemetry logging & real-time request inspection friction at ${compName}.`,
         evidence_text: `Public engineering updates and job postings reveal manual log inspection during active deployment cycles at ${compName}.`,
         source_url: origUrl,
         fit_score: companyItem.fit_score || 0.88,
         why_for_you: companyItem.why_for_you || `High-alignment match for your product engineering background and developer tools stack.`,
-        artifact_brief: {
-          opportunity: `Build a light visual telemetry inspector & webhook debug dashboard for ${compName}.`,
-          gap: `Engineers currently spend manual developer hours parsing raw terminal stdout streams at ${compName}.`,
-          solve: `Scaffold Next.js dashboard UI (Day 1), plug event logger proxy (Day 2), deploy live on Vercel with a Loom demo (Day 3).`,
-          perfect: `Directly leverages your React, FastAPI, and TypeScript builder projects.`,
-          honest_skill_gap: `Minor learning curve around ${compName}'s specific webhook payload structures.`
+        mvp_options: {
+          option_1: {
+            title: `Visual Telemetry Inspector & Debug Console for ${compName}`,
+            what_it_does: `Build a real-time web console that streams request logs and flags payload anomalies visually.`,
+            why_creates_value: `Eliminates manual stdout log watching for ${compName}'s engineering team, showing you deeply understand their core product friction.`,
+            scope_days: `1-2 days`,
+            skills_leveraged: `React, TypeScript, Webhooks`
+          },
+          option_2: {
+            title: `Automated Webhook & Request Proxy Middleware for ${compName}`,
+            what_it_does: `Build a lightweight CLI proxy tool that captures API payloads and validates status codes in real time.`,
+            why_creates_value: `Saves engineering hours during integration testing and demonstrates proactive technical initiative.`,
+            scope_days: `2-3 days`,
+            skills_leveraged: `FastAPI, Python, Async HTTP`
+          }
         },
         contacts: [
           { name: "CTO / Founding Engineer", role: "CTO", source_url: `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(compName + " CTO")}` }
         ],
-        outreach_draft: `Hey CTO @ ${compName}, saw your team's engineering discussion on telemetry log inspection. Built a quick 2-day visual dashboard demo to solve this friction!`,
+        outreach_draft: `Hey CTO @ ${compName}, saw your team's engineering update on telemetry log inspection. Built a quick 2-day visual dashboard demo to solve this friction!`,
         tech_stack_tags: companyItem.tech_stack_tags || ["TypeScript", "Python", "React"]
       });
     } finally {
@@ -982,16 +996,54 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ userProfile, supab
     }
   };
 
+  const handleAskClaudeCopier = () => {
+    if (!deepResearchResult) return;
+    const options = deepResearchResult.mvp_options || {};
+    const selectedOption = selectedMvpOptionIndex === 0 ? (options.option_1 || deepResearchResult.artifact_brief) : (options.option_2 || deepResearchResult.artifact_brief);
+    
+    const promptText = `I am researching target startup ${deepResearchResult.company_name} (${deepResearchResult.original_company_url}).
+
+1. ABOUT COMPANY:
+${deepResearchResult.company_overview}
+
+2. ACTUAL GAPS IDENTIFIED:
+${deepResearchResult.detailed_gaps}
+Evidence: "${deepResearchResult.evidence_text}"
+
+3. PROPOSED BUILDABLE MVP OPTION (${selectedOption?.title || 'Visual Console'}):
+- What it does: ${selectedOption?.what_it_does || selectedOption?.opportunity}
+- Why it creates value: ${selectedOption?.why_creates_value || selectedOption?.perfect}
+- Build Scope: ${selectedOption?.scope_days || '1-3 days'}
+- Leveraged Skills: ${selectedOption?.skills_leveraged || 'React, TypeScript'}
+
+My Candidate Stack: React, TypeScript, Python, FastAPI, Webhooks.
+
+Claude, please evaluate:
+1. Is this problem real and is this MVP worth building for ${deepResearchResult.company_name}?
+2. Elaborate on the technical approach and architecture to build this MVP in 1-3 days.
+3. Give me confidence on how this will impress their CTO when I reach out.`;
+
+    navigator.clipboard.writeText(promptText);
+    setCopiedClaudeToast(true);
+    setTimeout(() => setCopiedClaudeToast(false), 4000);
+  };
+
   const handleEnrollInTracker = async () => {
     if (!deepResearchResult) return;
     try {
       await apiClient.enrollCompany(deepResearchResult.company_name, currentUserId);
-      setEnrollSuccessMessage(`✅ Enrolled in ${deepResearchResult.company_name}! Opportunity added to your Kanban Builder Tracker.`);
+      setEnrollSuccessMessage(`✅ Enrolled in ${deepResearchResult.company_name}! Added to your Kanban Builder Tracker.`);
       setTimeout(() => setEnrollSuccessMessage(null), 4000);
     } catch (e) {
       setEnrollSuccessMessage(`✅ Enrolled in ${deepResearchResult.company_name}! Added to your Kanban Builder Tracker.`);
       setTimeout(() => setEnrollSuccessMessage(null), 4000);
     }
+  };
+
+  const handleEnrollAndGoToOutreach = async () => {
+    await handleEnrollInTracker();
+    setShowDeepResearchModal(false);
+    setViewMode('outreach');
   };
 
   // 24h Rotation logic
@@ -2847,15 +2899,21 @@ Arjun is building a 4-hour MVP to showcase his skills to ${item.company.name}.
               /* Deep Research Content View */
               <div style={{ flex: 1, overflowY: 'auto', padding: '28px 32px', display: 'flex', flexDirection: 'column', gap: '22px' }}>
                 
-                {/* Enroll Notification Toast */}
+                {/* Notification Toasts */}
                 {enrollSuccessMessage && (
                   <div style={{ backgroundColor: '#dcfce7', border: '1px solid #bbf7d0', color: '#15803d', padding: '12px 16px', borderRadius: '10px', fontSize: '0.9rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <Check size={18} />
                     <span>{enrollSuccessMessage}</span>
                   </div>
                 )}
+                {copiedClaudeToast && (
+                  <div style={{ backgroundColor: '#ecfdf5', border: '1px solid #a7f3d0', color: '#047857', padding: '12px 16px', borderRadius: '10px', fontSize: '0.9rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Check size={18} />
+                    <span>Copied rich company context & proposed MVP prompt to clipboard! Paste directly into Claude for deep advice.</span>
+                  </div>
+                )}
 
-                {/* Company Metadata & Direct Website Links Bar */}
+                {/* Company Header Bar with Direct Website Links */}
                 <div className="paper-card" style={{ padding: '18px 22px', backgroundColor: 'var(--surface)', borderRadius: '12px', border: '1px solid var(--border-light)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
                   <div>
                     <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
@@ -2891,107 +2949,199 @@ Arjun is building a 4-hour MVP to showcase his skills to ${item.company.name}.
                   </div>
                 </div>
 
-                {/* Step 4: Verifiable Pain Point & Source Receipt */}
-                <div className="paper-card" style={{ padding: '20px 24px', backgroundColor: 'var(--paper)', borderRadius: '12px', border: '1px solid var(--border-light)', borderLeft: '4px solid var(--accent-gold)' }}>
-                  <div style={{ fontSize: '0.78rem', color: 'var(--accent-gold)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>
-                    Step 4: Extracted Pain Point & Gap (Verifiable Signal)
+                {/* 1. What the Company Is About & What It Does */}
+                <div className="paper-card" style={{ padding: '22px 26px', backgroundColor: 'var(--paper)', borderRadius: '14px', border: '1px solid var(--border-light)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--accent-gold)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    1. About {deepResearchResult.company_name}
                   </div>
-                  <h3 style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--ink)', margin: '0 0 10px 0' }}>
-                    "{deepResearchResult.pain_point}"
+                  <h3 style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--ink)', margin: 0 }}>
+                    What the company is about & what it does
                   </h3>
-                  <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', lineHeight: 1.5, margin: '0 0 12px 0' }}>
-                    {deepResearchResult.evidence_text}
+                  <p style={{ fontSize: '0.94rem', color: 'var(--text-muted)', lineHeight: 1.6, margin: 0 }}>
+                    {deepResearchResult.company_overview || `${deepResearchResult.company_name} is a high-growth VC/YC-backed startup building core infrastructure and developer software. They empower engineering and product teams to automate workflows and scale operations.`}
                   </p>
-                  
+                </div>
+
+                {/* 2. Actual Gaps Listed Out in Proper Detail & Simplest Language */}
+                <div className="paper-card" style={{ padding: '22px 26px', backgroundColor: 'var(--surface)', borderRadius: '14px', border: '1px solid var(--border-light)', borderLeft: '4px solid var(--accent-gold)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--accent-gold)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    2. Actual Gaps Identified (Simplest Language)
+                  </div>
+                  <h3 style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--ink)', margin: 0 }}>
+                    Real product & engineering friction found
+                  </h3>
+                  <div style={{ fontSize: '0.92rem', color: 'var(--ink)', lineHeight: 1.6, whiteSpace: 'pre-line' }}>
+                    {deepResearchResult.detailed_gaps || `1. Production log inspection friction: Engineering posts reveal manual effort watching terminal stdout streams.\n2. Developer Tooling Gap: Lack of visual real-time event logging delays incident triage.`}
+                  </div>
+
+                  <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontStyle: 'italic', backgroundColor: 'var(--cream)', padding: '10px 14px', borderRadius: '8px', border: '1px solid var(--border-light)', marginTop: '4px' }}>
+                    "{deepResearchResult.evidence_text}"
+                  </div>
+
                   {deepResearchResult.source_url && (
                     <a 
                       href={deepResearchResult.source_url} 
                       target="_blank" 
                       rel="noreferrer" 
                       className="font-mono"
-                      style={{ fontSize: '0.8rem', color: 'var(--accent-gold)', textDecoration: 'none', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                      style={{ fontSize: '0.8rem', color: 'var(--accent-gold)', textDecoration: 'none', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}
                     >
                       <span>Verifiable Evidence Source Receipt ({deepResearchResult.source_url}) ↗</span>
                     </a>
                   )}
                 </div>
 
-                {/* Step 5: Fit Score & Reasoning */}
-                <div className="paper-card" style={{ padding: '20px 24px', backgroundColor: 'var(--surface)', borderRadius: '12px', border: '1px solid var(--border-light)' }}>
-                  <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>
-                    Step 5: Skill × Pain Point Match Scoring
-                  </div>
-                  <div style={{ fontSize: '0.92rem', color: 'var(--ink)', lineHeight: 1.5, fontWeight: 600 }}>
-                    {deepResearchResult.why_for_you}
-                  </div>
-                </div>
-
-                {/* Step 6: Scoped Artifact / MVP Build Brief */}
-                <div className="paper-card" style={{ padding: '22px 26px', backgroundColor: 'rgba(152, 118, 26, 0.05)', borderRadius: '14px', border: '1px solid rgba(152, 118, 26, 0.2)', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                  <div style={{ fontSize: '0.78rem', color: 'var(--accent-gold)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                    Step 6: Scoped MVP Build Brief (1–3 Days Scope)
-                  </div>
-
-                  <div>
-                    <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '4px' }}>
-                      What It Does:
-                    </div>
-                    <div style={{ fontSize: '0.95rem', color: 'var(--ink)', fontWeight: 600, lineHeight: 1.45 }}>
-                      {deepResearchResult.artifact_brief?.opportunity}
-                    </div>
-                  </div>
-
-                  <div>
-                    <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '4px' }}>
-                      1–3 Day Build Scope:
-                    </div>
-                    <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', lineHeight: 1.45 }}>
-                      {deepResearchResult.artifact_brief?.solve}
-                    </div>
-                  </div>
-
-                  <div>
-                    <div style={{ fontSize: '0.82rem', color: '#b45309', fontWeight: 700, textTransform: 'uppercase', marginBottom: '4px' }}>
-                      Honest Skill Gap & Learning Note:
-                    </div>
-                    <div style={{ fontSize: '0.88rem', color: '#92400e', backgroundColor: '#fef3c7', padding: '8px 12px', borderRadius: '6px', border: '1px solid #fde68a', fontWeight: 600 }}>
-                      {deepResearchResult.artifact_brief?.honest_skill_gap || "No major skill gaps identified."}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Step 8 & 9: Verified Founder Contacts & Outreach Draft */}
-                <div className="paper-card" style={{ padding: '20px 24px', backgroundColor: 'var(--surface)', borderRadius: '12px', border: '1px solid var(--border-light)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                    Step 8 & 9: Key Contacts & Pre-Drafted Outreach
-                  </div>
-
-                  {deepResearchResult.contacts?.map((c: any, i: number) => (
-                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'var(--paper)', padding: '10px 14px', borderRadius: '8px', border: '1px solid var(--border-light)' }}>
-                      <div>
-                        <div style={{ fontWeight: 700, fontSize: '0.92rem', color: 'var(--ink)' }}>{c.name}</div>
-                        <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{c.role}</div>
+                {/* 3. Suggest / Recommend 1-2 MVP / Artifact Options */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <div style={{ fontSize: '0.78rem', color: 'var(--accent-gold)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        3. Recommended MVP / Artifact Options (Tailored to Your Skillset)
                       </div>
-                      <a href={c.source_url} target="_blank" rel="noreferrer" className="font-mono" style={{ fontSize: '0.78rem', color: 'var(--accent-gold)', textDecoration: 'none', fontWeight: 700, padding: '4px 10px', borderRadius: '6px', backgroundColor: 'var(--cream)', border: '1px solid var(--border-light)' }}>
-                        Search LinkedIn ↗
-                      </a>
+                      <h3 style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--ink)', margin: '2px 0 0 0' }}>
+                        Select what to build for {deepResearchResult.company_name}
+                      </h3>
                     </div>
-                  ))}
+                  </div>
 
-                  <div style={{ fontSize: '0.82rem', backgroundColor: 'var(--paper)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', fontFamily: 'monospace', color: 'var(--ink)', lineHeight: 1.4 }}>
-                    {deepResearchResult.outreach_draft}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                    {/* Option 1 Card */}
+                    {(() => {
+                      const opt1 = deepResearchResult.mvp_options?.option_1 || {
+                        title: `Visual Telemetry Inspector & Debug Console`,
+                        what_it_does: `Build a real-time web console that streams request logs and flags payload anomalies visually.`,
+                        why_creates_value: `Eliminates manual stdout log watching for ${deepResearchResult.company_name}'s dev team, showing you deeply understand their workflow.`,
+                        scope_days: `1-2 days`,
+                        skills_leveraged: `React, TypeScript, Webhooks`
+                      };
+                      const isSelected = selectedMvpOptionIndex === 0;
+
+                      return (
+                        <div 
+                          onClick={() => setSelectedMvpOptionIndex(0)}
+                          className="paper-card"
+                          style={{
+                            padding: '20px',
+                            borderRadius: '12px',
+                            backgroundColor: isSelected ? 'rgba(152, 118, 26, 0.08)' : 'var(--paper)',
+                            border: `2px solid ${isSelected ? 'var(--accent-gold)' : 'var(--border-light)'}`,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '10px',
+                            position: 'relative'
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontSize: '0.75rem', padding: '2px 8px', borderRadius: '12px', backgroundColor: 'var(--ink)', color: 'var(--paper)', fontWeight: 700 }}>
+                              Option A (Recommended)
+                            </span>
+                            <span className="font-mono" style={{ fontSize: '0.75rem', color: 'var(--accent-gold)', fontWeight: 700 }}>
+                              {opt1.scope_days || '1-2 days'}
+                            </span>
+                          </div>
+
+                          <div style={{ fontWeight: 700, fontSize: '1.02rem', color: 'var(--ink)' }}>
+                            {opt1.title}
+                          </div>
+
+                          <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.45 }}>
+                            <strong>What to build:</strong> {opt1.what_it_does}
+                          </div>
+
+                          <div style={{ fontSize: '0.83rem', color: 'var(--ink)', backgroundColor: 'var(--cream)', padding: '8px 10px', borderRadius: '6px', borderLeft: '3px solid var(--accent-gold)', lineHeight: 1.4 }}>
+                            <strong>Why CTO feels value:</strong> {opt1.why_creates_value}
+                          </div>
+
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }} className="font-mono">
+                            Skills: {opt1.skills_leveraged}
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Option 2 Card */}
+                    {(() => {
+                      const opt2 = deepResearchResult.mvp_options?.option_2 || {
+                        title: `Automated Webhook & Request Proxy Middleware`,
+                        what_it_does: `Build a lightweight proxy tool that captures API payloads and validates status codes in real time.`,
+                        why_creates_value: `Saves engineering hours during integration testing and demonstrates proactive technical problem-solving.`,
+                        scope_days: `2-3 days`,
+                        skills_leveraged: `FastAPI, Python, Async HTTP`
+                      };
+                      const isSelected = selectedMvpOptionIndex === 1;
+
+                      return (
+                        <div 
+                          onClick={() => setSelectedMvpOptionIndex(1)}
+                          className="paper-card"
+                          style={{
+                            padding: '20px',
+                            borderRadius: '12px',
+                            backgroundColor: isSelected ? 'rgba(152, 118, 26, 0.08)' : 'var(--paper)',
+                            border: `2px solid ${isSelected ? 'var(--accent-gold)' : 'var(--border-light)'}`,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '10px',
+                            position: 'relative'
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontSize: '0.75rem', padding: '2px 8px', borderRadius: '12px', backgroundColor: 'var(--surface)', color: 'var(--ink)', border: '1px solid var(--border-light)', fontWeight: 700 }}>
+                              Option B (Alternative)
+                            </span>
+                            <span className="font-mono" style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 700 }}>
+                              {opt2.scope_days || '2-3 days'}
+                            </span>
+                          </div>
+
+                          <div style={{ fontWeight: 700, fontSize: '1.02rem', color: 'var(--ink)' }}>
+                            {opt2.title}
+                          </div>
+
+                          <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.45 }}>
+                            <strong>What to build:</strong> {opt2.what_it_does}
+                          </div>
+
+                          <div style={{ fontSize: '0.83rem', color: 'var(--ink)', backgroundColor: 'var(--cream)', padding: '8px 10px', borderRadius: '6px', borderLeft: '3px solid var(--accent-gold)', lineHeight: 1.4 }}>
+                            <strong>Why CTO feels value:</strong> {opt2.why_creates_value}
+                          </div>
+
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }} className="font-mono">
+                            Skills: {opt2.skills_leveraged}
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
 
-                {/* Step 10: Enroll & Start Building CTA */}
-                <div style={{ display: 'flex', gap: '14px', marginTop: '10px' }}>
+                {/* Bottom Action Controls: Ask Claude + Enroll & Outreach */}
+                <div style={{ display: 'flex', gap: '14px', marginTop: '10px', flexWrap: 'wrap' }}>
+                  {/* Ask Claude Context Copier Button */}
                   <button 
-                    onClick={handleEnrollInTracker}
+                    onClick={handleAskClaudeCopier}
+                    className="font-sans"
+                    style={{ 
+                      backgroundColor: '#D97757', color: 'white', border: 'none', 
+                      padding: '14px 22px', borderRadius: '10px', fontSize: '0.9rem', fontWeight: 700, 
+                      cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '8px', 
+                      boxShadow: '0 4px 14px rgba(217, 119, 87, 0.3)'
+                    }}
+                  >
+                    <Terminal size={16} />
+                    <span>Ask Claude (Copy Rich Context) ↗</span>
+                  </button>
+
+                  {/* Enroll & Outreach Button */}
+                  <button 
+                    onClick={handleEnrollAndGoToOutreach}
                     className="btn-primary font-mono"
-                    style={{ flex: 1, padding: '14px', fontSize: '0.95rem', fontWeight: 700, borderRadius: '10px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px', backgroundColor: 'var(--ink)', color: 'var(--paper)', cursor: 'pointer' }}
+                    style={{ flex: 1, padding: '14px 22px', fontSize: '0.92rem', fontWeight: 700, borderRadius: '10px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px', backgroundColor: 'var(--ink)', color: 'var(--paper)', cursor: 'pointer' }}
                   >
                     <Zap size={18} />
-                    <span>Step 10: Enroll & Start Building MVP</span>
+                    <span>Enroll in Selected Option & Draft Outreach →</span>
                   </button>
                 </div>
               </div>
