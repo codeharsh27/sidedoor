@@ -434,5 +434,33 @@ export const apiClient = {
     return data.bounties ?? [];
   },
 
+  /**
+   * Triggers Steps 3-9 Company Deep Research, Pain Point Extraction & Scoped Brief
+   */
+  async deepResearchCompany(companyId: string, userId?: string): Promise<any> {
+    const res = await fetch(`${BASE_URL}/company/${companyId}/deep-research${userId ? `?user_id=${userId}` : ''}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    if (!res.ok) {
+      throw new Error(`Failed deep research for ${companyId}`);
+    }
+    return await res.json();
+  },
+
+  /**
+   * Step 10: Enrolls user in builder workflow & tracker
+   */
+  async enrollCompany(companyId: string, userId?: string): Promise<any> {
+    const res = await fetch(`${BASE_URL}/company/${companyId}/enroll${userId ? `?user_id=${userId}` : ''}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    if (!res.ok) {
+      throw new Error(`Failed to enroll in ${companyId}`);
+    }
+    return await res.json();
+  },
+
 };
 
