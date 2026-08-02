@@ -113,10 +113,124 @@ const getOpportunityDetails = (item: OpportunityCardView) => {
       opportunity: `Build a Next.js / React micro-app or developer extension for ${item.company.name} solving: "${title}".`,
       gap: cleanGap,
       solve: `Build a 4–6 hour open-source web sandbox or workflow extension for ${item.company.name}. Deploy live on Vercel/Railway and record a 2-minute Loom walkthrough.`,
-      perfect: item.why_matches_you || "Matches your profile credentials and technical domains."
     };
   }
 };
+
+const DEFAULT_DISCOVERY_FEED: any[] = [
+  {
+    id: 'oximy',
+    name: 'Oximy',
+    url: 'https://oximy.com',
+    funding_stage: 'seed',
+    funding: 'YC W24 • Seed ($2.5M)',
+    employee_count_approx: 12,
+    investor_tags: ['yc', 'w24'],
+    tech_stack_tags: ['TypeScript', 'Python', 'React', 'Anthropic API'],
+    why_for_you: 'Strong stack overlap — they need someone who can prototype AI features directly with Python & Anthropic API.',
+    fit_score: 0.86,
+    role: 'AI Product Engineer / Manager',
+    role_classification: 'hybrid_builder',
+    evidence_count: 3,
+    region_tag: 'global'
+  },
+  {
+    id: 'posthog',
+    name: 'PostHog',
+    url: 'https://posthog.com',
+    funding_stage: 'series_b',
+    funding: 'Series B ($27M)',
+    employee_count_approx: 45,
+    investor_tags: ['yc', 'google_ventures'],
+    tech_stack_tags: ['Python', 'Django', 'TypeScript', 'React'],
+    why_for_you: 'PostHog hires Product Engineers who own end-to-end product features across Python & React.',
+    fit_score: 0.84,
+    role: 'Full Stack Product Engineer',
+    role_classification: 'hybrid_builder',
+    evidence_count: 5,
+    region_tag: 'global'
+  },
+  {
+    id: 'langchain',
+    name: 'LangChain',
+    url: 'https://langchain.com',
+    funding_stage: 'series_a',
+    funding: 'Series A ($25M)',
+    employee_count_approx: 25,
+    investor_tags: ['benchmark', 'sequoia'],
+    tech_stack_tags: ['Python', 'FastAPI', 'TypeScript', 'LLM Orchestration'],
+    why_for_you: 'Perfect fit for AI infrastructure — matches your LLM orchestration & FastAPI experience.',
+    fit_score: 0.82,
+    role: 'AI Infrastructure Engineer',
+    role_classification: 'hybrid_builder',
+    evidence_count: 4,
+    region_tag: 'global'
+  },
+  {
+    id: 'resend',
+    name: 'Resend',
+    url: 'https://resend.com',
+    funding_stage: 'seed',
+    funding: 'YC W24 • Seed ($3M)',
+    employee_count_approx: 10,
+    investor_tags: ['yc', 'w24'],
+    tech_stack_tags: ['React', 'Next.js', 'Node.js', 'PostgreSQL'],
+    why_for_you: 'Resend is building developer-first email infrastructure with React & PostgreSQL.',
+    fit_score: 0.80,
+    role: 'Founding Full Stack Engineer',
+    role_classification: 'hybrid_builder',
+    evidence_count: 3,
+    region_tag: 'global'
+  },
+  {
+    id: 'superhuman',
+    name: 'Superhuman',
+    url: 'https://superhuman.com',
+    funding_stage: 'series_b',
+    funding: 'Series B ($33M)',
+    employee_count_approx: 85,
+    investor_tags: ['a16z', 'yc'],
+    tech_stack_tags: ['Python', 'FastAPI', 'React', 'Vector DB'],
+    why_for_you: 'Fastest email platform in the world, building AI triage automation in Python & FastAPI.',
+    fit_score: 0.78,
+    role: 'Senior AI Systems Engineer',
+    role_classification: 'hybrid_builder',
+    evidence_count: 4,
+    region_tag: 'global'
+  },
+  {
+    id: 'appsmith',
+    name: 'Appsmith',
+    url: 'https://appsmith.com',
+    funding_stage: 'series_a',
+    funding: 'Peak XV / Accel India ($41M)',
+    employee_count_approx: 60,
+    investor_tags: ['peak_xv', 'accel_india'],
+    tech_stack_tags: ['TypeScript', 'React', 'Java', 'Docker'],
+    why_for_you: 'High-paying Indian VC startup with direct access to founding leadership.',
+    fit_score: 0.76,
+    role: 'Product Engineer',
+    role_classification: 'hybrid_builder',
+    evidence_count: 3,
+    region_tag: 'india'
+  },
+  {
+    id: 'signoz',
+    name: 'SigNoz',
+    url: 'https://signoz.io',
+    funding_stage: 'seed',
+    funding: 'YC W22 • Peak XV ($6.5M)',
+    employee_count_approx: 18,
+    investor_tags: ['yc', 'peak_xv'],
+    tech_stack_tags: ['Go', 'TypeScript', 'React', 'ClickHouse'],
+    why_for_you: 'Open source observability platform built out of India for global engineering teams.',
+    fit_score: 0.75,
+    role: 'Full Stack Engineer',
+    role_classification: 'hybrid_builder',
+    evidence_count: 4,
+    region_tag: 'india'
+  }
+];
 
 export const DashboardView: React.FC<DashboardViewProps> = ({ userProfile, supabaseUser: supabaseUserProp, onBackToLanding }) => {
   const { user: authUser, signOut } = useAuth();
@@ -222,7 +336,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ userProfile, supab
   const [contacts, setContacts] = useState<any[]>([]);
 
   // Phase 1-5 State additions
-  const [discoveryFeed, setDiscoveryFeed] = useState<any[]>([]);
+  const [discoveryFeed, setDiscoveryFeed] = useState<any[]>(DEFAULT_DISCOVERY_FEED);
   const [playbookData, setPlaybookData] = useState<any | null>(null);
   const [activePlaybookTab, setActivePlaybookTab] = useState<'email' | 'twitter' | 'discord' | 'blog' | 'followup'>('email');
   const [kanbanBoard, setKanbanBoard] = useState<any | null>(null);

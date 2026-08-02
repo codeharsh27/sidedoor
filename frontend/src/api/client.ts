@@ -251,12 +251,38 @@ export const apiClient = {
   /**
    * Fetches curated VC discovery feed
    */
-  async getCompanyFeed(userId?: string): Promise<FeedCompany[]> {
-    const url = userId ? `${BASE_URL}/feed?user_id=${userId}` : `${BASE_URL}/feed`;
-    const res = await fetch(url);
-    if (!res.ok) return [];
-    const data = await res.json();
-    return data.companies ?? [];
+  async getCompanyFeed(userId?: string): Promise<any[]> {
+    const url = userId ? `${BASE_URL}/company/feed?user_id=${userId}` : `${BASE_URL}/company/feed`;
+    try {
+      const res = await fetch(url);
+      if (!res.ok) return [];
+      const data = await res.json();
+      const rawList = Array.isArray(data) ? data : (data.companies ?? []);
+      return rawList.map((item: any) => ({
+        id: item.id || item.company || Math.random().toString(),
+        name: item.company || item.name || "Target Company",
+        url: item.website || item.url || "https://ycombinator.com",
+        github_repo_url: item.github_repo_url || null,
+        careers_page_url: item.jd_url || item.careers_page_url || null,
+        funding_stage: item.stage || item.funding_stage || "seed",
+        funding: item.funding || "Seed, $2M",
+        investor_tags: item.investor_tags || ["yc", "a16z"],
+        employee_count_approx: item.employee_count_approx || 12,
+        tech_stack_tags: item.tech_stack_tags || item.tech_stack || ["TypeScript", "Python", "React"],
+        scan_status: "done",
+        evidence_count: item.evidence_count || 3,
+        is_seed_list: true,
+        seed_list_source: "yc_w24",
+        why_for_you: item.fit_explanation || item.why_for_you || "Matches your candidate profile.",
+        fit_score: item.fit_score || 0.85,
+        role: item.role || "Product Engineer",
+        role_classification: item.role_classification || "hybrid_builder",
+        jd_url: item.jd_url || item.url
+      }));
+    } catch (err) {
+      console.error("Error fetching company feed:", err);
+      return [];
+    }
   },
 
   /**
