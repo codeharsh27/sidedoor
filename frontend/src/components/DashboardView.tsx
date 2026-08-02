@@ -929,6 +929,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ userProfile, supab
   const [enrollSuccessMessage, setEnrollSuccessMessage] = useState<string | null>(null);
   const [selectedMvpOptionIndex, setSelectedMvpOptionIndex] = useState<number>(0);
   const [copiedClaudeToast, setCopiedClaudeToast] = useState<boolean>(false);
+  const [showClaudePromptBox, setShowClaudePromptBox] = useState<boolean>(false);
 
   const handleTapCompanyCard = async (companyItem: any) => {
     if (showViewMoreModal) {
@@ -940,6 +941,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ userProfile, supab
     setDeepResearchResult(null);
     setEnrollSuccessMessage(null);
     setSelectedMvpOptionIndex(0);
+    setShowClaudePromptBox(false);
 
     const compName = companyItem.name;
     const origUrl = companyItem.url || `https://www.${compName.toLowerCase()}.com`;
@@ -2926,12 +2928,39 @@ Arjun is building a 4-hour MVP to showcase his skills to ${item.company.name}.
                 </div>
               </div>
 
-              <button 
-                onClick={() => setShowDeepResearchModal(false)}
-                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '6px' }}
-              >
-                <X size={24} />
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                {deepResearchResult && (
+                  <>
+                    <button 
+                      onClick={handleAskChatGPTAutoFill}
+                      className="font-mono"
+                      style={{ padding: '6px 12px', borderRadius: '20px', backgroundColor: '#10A37F', color: 'white', border: 'none', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '5px', boxShadow: '0 2px 8px rgba(16,163,127,0.25)' }}
+                    >
+                      <Send size={12} />
+                      <span>Ask ChatGPT ↗</span>
+                    </button>
+
+                    <button 
+                      onClick={() => {
+                        handleAskClaudeCopier();
+                        setShowClaudePromptBox(!showClaudePromptBox);
+                      }}
+                      className="font-mono"
+                      style={{ padding: '6px 12px', borderRadius: '20px', backgroundColor: '#D97757', color: 'white', border: 'none', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '5px', boxShadow: '0 2px 8px rgba(217,119,87,0.25)' }}
+                    >
+                      <Terminal size={12} />
+                      <span>Ask Claude {showClaudePromptBox ? '▲' : '▼'}</span>
+                    </button>
+                  </>
+                )}
+
+                <button 
+                  onClick={() => setShowDeepResearchModal(false)}
+                  style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '6px' }}
+                >
+                  <X size={22} />
+                </button>
+              </div>
             </div>
 
             {/* Loading Spinner View */}
@@ -2971,6 +3000,44 @@ Arjun is building a 4-hour MVP to showcase his skills to ${item.company.name}.
                     >
                       Re-Copy Prompt 📋
                     </button>
+                  </div>
+                )}
+                {showClaudePromptBox && (
+                  <div className="paper-card" style={{ padding: '20px', backgroundColor: 'var(--surface)', borderRadius: '12px', border: '1px solid var(--accent-gold)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--ink)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Terminal size={16} color="#D97757" />
+                        <span>Claude AI Context Prompt</span>
+                      </div>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button 
+                          onClick={() => {
+                            const text = getClaudePromptText();
+                            navigator.clipboard.writeText(text);
+                            setCopiedClaudeToast(true);
+                            setTimeout(() => setCopiedClaudeToast(false), 4000);
+                          }}
+                          className="font-mono"
+                          style={{ padding: '5px 12px', borderRadius: '6px', backgroundColor: 'var(--ink)', color: 'var(--paper)', border: 'none', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}
+                        >
+                          Copy Prompt 📋
+                        </button>
+                        <a 
+                          href="https://claude.ai/new" 
+                          target="_blank" 
+                          rel="noreferrer" 
+                          className="font-mono"
+                          style={{ padding: '5px 12px', borderRadius: '6px', backgroundColor: '#D97757', color: 'white', textDecoration: 'none', fontSize: '0.75rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                        >
+                          <span>Open Claude.ai</span>
+                          <ArrowUpRight size={12} />
+                        </a>
+                      </div>
+                    </div>
+
+                    <pre style={{ margin: 0, padding: '12px', backgroundColor: 'var(--paper)', borderRadius: '8px', border: '1px solid var(--border-light)', fontSize: '0.78rem', color: 'var(--ink)', whiteSpace: 'pre-wrap', maxHeight: '180px', overflowY: 'auto', fontFamily: 'monospace', lineHeight: 1.4 }}>
+                      {getClaudePromptText()}
+                    </pre>
                   </div>
                 )}
 
@@ -3178,43 +3245,12 @@ Arjun is building a 4-hour MVP to showcase his skills to ${item.company.name}.
                   </div>
                 </div>
 
-                {/* Bottom Action Controls: Ask ChatGPT + Ask Claude + Enroll & Outreach */}
-                <div style={{ display: 'flex', gap: '12px', marginTop: '10px', flexWrap: 'wrap' }}>
-                  {/* Ask ChatGPT Auto-Fill Button */}
-                  <button 
-                    onClick={handleAskChatGPTAutoFill}
-                    className="font-sans"
-                    style={{ 
-                      backgroundColor: '#10A37F', color: 'white', border: 'none', 
-                      padding: '14px 18px', borderRadius: '10px', fontSize: '0.88rem', fontWeight: 700, 
-                      cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px', 
-                      boxShadow: '0 4px 14px rgba(16, 163, 127, 0.3)'
-                    }}
-                  >
-                    <Send size={15} />
-                    <span>Ask ChatGPT (Auto-Fill) ↗</span>
-                  </button>
-
-                  {/* Ask Claude Context Copier Button */}
-                  <button 
-                    onClick={handleAskClaudeCopier}
-                    className="font-sans"
-                    style={{ 
-                      backgroundColor: '#D97757', color: 'white', border: 'none', 
-                      padding: '14px 18px', borderRadius: '10px', fontSize: '0.88rem', fontWeight: 700, 
-                      cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px', 
-                      boxShadow: '0 4px 14px rgba(217, 119, 87, 0.3)'
-                    }}
-                  >
-                    <Terminal size={15} />
-                    <span>Ask Claude (Copies Prompt) ↗</span>
-                  </button>
-
-                  {/* Enroll & Outreach Button */}
+                {/* Bottom Action Controls: Single Full-Width Enroll Button */}
+                <div style={{ marginTop: '10px' }}>
                   <button 
                     onClick={handleEnrollAndGoToOutreach}
                     className="btn-primary font-mono"
-                    style={{ flex: 1, padding: '14px 22px', fontSize: '0.92rem', fontWeight: 700, borderRadius: '10px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px', backgroundColor: 'var(--ink)', color: 'var(--paper)', cursor: 'pointer' }}
+                    style={{ width: '100%', padding: '16px 24px', fontSize: '0.95rem', fontWeight: 700, borderRadius: '12px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px', backgroundColor: 'var(--ink)', color: 'var(--paper)', cursor: 'pointer', boxShadow: '0 4px 16px rgba(0,0,0,0.15)' }}
                   >
                     <Zap size={18} />
                     <span>Enroll in Selected Option & Draft Outreach →</span>
