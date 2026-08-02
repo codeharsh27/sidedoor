@@ -996,12 +996,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ userProfile, supab
     }
   };
 
-  const handleAskClaudeCopier = () => {
-    if (!deepResearchResult) return;
+  const getClaudePromptText = () => {
+    if (!deepResearchResult) return '';
     const options = deepResearchResult.mvp_options || {};
     const selectedOption = selectedMvpOptionIndex === 0 ? (options.option_1 || deepResearchResult.artifact_brief) : (options.option_2 || deepResearchResult.artifact_brief);
     
-    const promptText = `I am researching target startup ${deepResearchResult.company_name} (${deepResearchResult.original_company_url}).
+    return `I am researching target startup ${deepResearchResult.company_name} (${deepResearchResult.original_company_url}).
 
 1. ABOUT COMPANY:
 ${deepResearchResult.company_overview || 'High-growth VC backed startup.'}
@@ -1022,22 +1022,49 @@ Claude, please evaluate:
 1. Is this problem real and is this MVP worth building for ${deepResearchResult.company_name}?
 2. Elaborate on the technical approach and architecture to build this MVP in 1-3 days.
 3. Give me confidence on how this will impress their CTO when I reach out.`;
+  };
 
-    // 1. Copy to clipboard with fallback
+  const handleAskChatGPTAutoFill = () => {
+    const promptText = getClaudePromptText();
+    if (!promptText) return;
+    
+    // Copy to clipboard
+    try {
+      navigator.clipboard.writeText(promptText);
+    } catch (e) {}
+
+    // Auto-fill prompt via ChatGPT URL query parameter
+    const chatGptUrl = `https://chatgpt.com/?q=${encodeURIComponent(promptText)}`;
+    window.open(chatGptUrl, "_blank");
+
+    setCopiedClaudeToast(true);
+    setTimeout(() => setCopiedClaudeToast(false), 5000);
+  };
+
+  const handleAskClaudeCopier = () => {
+    const promptText = getClaudePromptText();
+    if (!promptText) return;
+
+    // 1. Copy to clipboard with synchronous textarea fallback
+    try {
+      const textArea = document.createElement("textarea");
+      textArea.value = promptText;
+      textArea.style.position = "fixed";
+      textArea.style.left = "-9999px";
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textArea);
+    } catch (err) {
+      console.warn("Textarea copy fallback error:", err);
+    }
+
     try {
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(promptText);
-      } else {
-        const textArea = document.createElement("textarea");
-        textArea.value = promptText;
-        document.body.appendChild(textArea);
-        textArea.select();
-        document.execCommand("copy");
-        document.body.removeChild(textArea);
       }
-    } catch (err) {
-      console.warn("Clipboard fallback copy:", err);
-    }
+    } catch (err) {}
 
     // 2. Open Claude AI in a new tab
     try {
@@ -1048,7 +1075,7 @@ Claude, please evaluate:
 
     // 3. Show visual toast feedback
     setCopiedClaudeToast(true);
-    setTimeout(() => setCopiedClaudeToast(false), 5000);
+    setTimeout(() => setCopiedClaudeToast(false), 6000);
   };
 
   const handleEnrollInTracker = async () => {
@@ -2930,9 +2957,20 @@ Arjun is building a 4-hour MVP to showcase his skills to ${item.company.name}.
                   </div>
                 )}
                 {copiedClaudeToast && (
-                  <div style={{ backgroundColor: '#ecfdf5', border: '1px solid #a7f3d0', color: '#047857', padding: '12px 16px', borderRadius: '10px', fontSize: '0.9rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Check size={18} />
-                    <span>Copied rich company context & proposed MVP prompt to clipboard! Paste directly into Claude for deep advice.</span>
+                  <div style={{ backgroundColor: '#ecfdf5', border: '1px solid #a7f3d0', color: '#047857', padding: '14px 18px', borderRadius: '10px', fontSize: '0.9rem', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', boxShadow: '0 4px 16px rgba(4, 120, 87, 0.15)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Check size={18} />
+                      <span>📋 Full company context & MVP prompt copied! Press <strong>Ctrl + V</strong> (or <strong>Cmd + V</strong>) in your new AI tab to paste!</span>
+                    </div>
+                    <button 
+                      onClick={() => {
+                        const text = getClaudePromptText();
+                        navigator.clipboard.writeText(text);
+                      }}
+                      style={{ backgroundColor: '#047857', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                    >
+                      Re-Copy Prompt 📋
+                    </button>
                   </div>
                 )}
 
@@ -3140,21 +3178,36 @@ Arjun is building a 4-hour MVP to showcase his skills to ${item.company.name}.
                   </div>
                 </div>
 
-                {/* Bottom Action Controls: Ask Claude + Enroll & Outreach */}
-                <div style={{ display: 'flex', gap: '14px', marginTop: '10px', flexWrap: 'wrap' }}>
+                {/* Bottom Action Controls: Ask ChatGPT + Ask Claude + Enroll & Outreach */}
+                <div style={{ display: 'flex', gap: '12px', marginTop: '10px', flexWrap: 'wrap' }}>
+                  {/* Ask ChatGPT Auto-Fill Button */}
+                  <button 
+                    onClick={handleAskChatGPTAutoFill}
+                    className="font-sans"
+                    style={{ 
+                      backgroundColor: '#10A37F', color: 'white', border: 'none', 
+                      padding: '14px 18px', borderRadius: '10px', fontSize: '0.88rem', fontWeight: 700, 
+                      cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px', 
+                      boxShadow: '0 4px 14px rgba(16, 163, 127, 0.3)'
+                    }}
+                  >
+                    <Send size={15} />
+                    <span>Ask ChatGPT (Auto-Fill) ↗</span>
+                  </button>
+
                   {/* Ask Claude Context Copier Button */}
                   <button 
                     onClick={handleAskClaudeCopier}
                     className="font-sans"
                     style={{ 
                       backgroundColor: '#D97757', color: 'white', border: 'none', 
-                      padding: '14px 22px', borderRadius: '10px', fontSize: '0.9rem', fontWeight: 700, 
-                      cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '8px', 
+                      padding: '14px 18px', borderRadius: '10px', fontSize: '0.88rem', fontWeight: 700, 
+                      cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px', 
                       boxShadow: '0 4px 14px rgba(217, 119, 87, 0.3)'
                     }}
                   >
-                    <Terminal size={16} />
-                    <span>Ask Claude (Copy Rich Context) ↗</span>
+                    <Terminal size={15} />
+                    <span>Ask Claude (Copies Prompt) ↗</span>
                   </button>
 
                   {/* Enroll & Outreach Button */}
