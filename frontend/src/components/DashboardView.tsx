@@ -1004,11 +1004,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ userProfile, supab
     const promptText = `I am researching target startup ${deepResearchResult.company_name} (${deepResearchResult.original_company_url}).
 
 1. ABOUT COMPANY:
-${deepResearchResult.company_overview}
+${deepResearchResult.company_overview || 'High-growth VC backed startup.'}
 
 2. ACTUAL GAPS IDENTIFIED:
-${deepResearchResult.detailed_gaps}
-Evidence: "${deepResearchResult.evidence_text}"
+${deepResearchResult.detailed_gaps || 'Telemetry & request inspection friction.'}
+Evidence: "${deepResearchResult.evidence_text || 'Public engineering discussion'}"
 
 3. PROPOSED BUILDABLE MVP OPTION (${selectedOption?.title || 'Visual Console'}):
 - What it does: ${selectedOption?.what_it_does || selectedOption?.opportunity}
@@ -1023,9 +1023,32 @@ Claude, please evaluate:
 2. Elaborate on the technical approach and architecture to build this MVP in 1-3 days.
 3. Give me confidence on how this will impress their CTO when I reach out.`;
 
-    navigator.clipboard.writeText(promptText);
+    // 1. Copy to clipboard with fallback
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(promptText);
+      } else {
+        const textArea = document.createElement("textarea");
+        textArea.value = promptText;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textArea);
+      }
+    } catch (err) {
+      console.warn("Clipboard fallback copy:", err);
+    }
+
+    // 2. Open Claude AI in a new tab
+    try {
+      window.open("https://claude.ai/new", "_blank");
+    } catch (e) {
+      console.warn("Could not open new window:", e);
+    }
+
+    // 3. Show visual toast feedback
     setCopiedClaudeToast(true);
-    setTimeout(() => setCopiedClaudeToast(false), 4000);
+    setTimeout(() => setCopiedClaudeToast(false), 5000);
   };
 
   const handleEnrollInTracker = async () => {
