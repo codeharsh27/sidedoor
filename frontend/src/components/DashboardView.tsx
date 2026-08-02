@@ -7,7 +7,8 @@ import { useAuth, getUserDisplayName, getUserInitials } from '../lib/useAuth';
 import {
   Terminal, Search, ShieldAlert,
   ArrowUpRight, Building2, PanelLeftClose, PanelLeftOpen,
-  PanelRightClose, PanelRightOpen, ArrowLeft, Link as LinkIcon, Send, Zap, Settings, Check, LogOut, MapPin, Calendar
+  PanelRightClose, PanelRightOpen, ArrowLeft, Link as LinkIcon, Send, Zap, Settings, Check, LogOut, MapPin, Calendar,
+  ChevronRight, ArrowRight, RefreshCw, X
 } from 'lucide-react';
 
 interface DashboardViewProps {
@@ -914,6 +915,52 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ userProfile, supab
   const [followupReminders, setFollowupReminders] = useState<any[]>([]);
   const [companyHealthMap, setCompanyHealthMap] = useState<Record<string, any>>({});
   const [isRefreshingFeed, setIsRefreshingFeed] = useState(false);
+
+  // 24-hour Rotation & View More Modal states
+  const [showViewMoreModal, setShowViewMoreModal] = useState(false);
+  const [rotationOffset, setRotationOffset] = useState<number>(0);
+  const [timeUntilRotation, setTimeUntilRotation] = useState<string>('23h 59m');
+  const [viewMoreSearch, setViewMoreSearch] = useState<string>('');
+
+  // 24h Rotation logic
+  useEffect(() => {
+    const ROTATION_KEY = 'sidedoor_feed_last_rotation_ts';
+    const OFFSET_KEY = 'sidedoor_feed_rotation_offset';
+
+    const checkRotation = () => {
+      const lastTs = parseInt(localStorage.getItem(ROTATION_KEY) || '0', 10);
+      const savedOffset = parseInt(localStorage.getItem(OFFSET_KEY) || '0', 10);
+      const now = Date.now();
+      const interval24h = 24 * 60 * 60 * 1000;
+
+      if (!lastTs || (now - lastTs >= interval24h)) {
+        const nextOffset = (savedOffset + 4) % (discoveryFeed.length || 40);
+        localStorage.setItem(ROTATION_KEY, now.toString());
+        localStorage.setItem(OFFSET_KEY, nextOffset.toString());
+        setRotationOffset(nextOffset);
+        setTimeUntilRotation('24h 00m');
+      } else {
+        setRotationOffset(savedOffset);
+        const msRemaining = interval24h - (now - lastTs);
+        const hrs = Math.floor(msRemaining / (1000 * 60 * 60));
+        const mins = Math.floor((msRemaining % (1000 * 60 * 60)) / (1000 * 60));
+        setTimeUntilRotation(`${hrs}h ${mins}m`);
+      }
+    };
+
+    checkRotation();
+    const timer = setInterval(checkRotation, 60000);
+    return () => clearInterval(timer);
+  }, [discoveryFeed.length]);
+
+  const handleForceRotate = () => {
+    const nextOffset = (rotationOffset + 4) % (discoveryFeed.length || 40);
+    localStorage.setItem('sidedoor_feed_last_rotation_ts', Date.now().toString());
+    localStorage.setItem('sidedoor_feed_rotation_offset', nextOffset.toString());
+    setRotationOffset(nextOffset);
+    setTimeUntilRotation('24h 00m');
+    handleRefreshFeed();
+  };
 
   const handleRefreshFeed = async () => {
     setIsRefreshingFeed(true);
@@ -1838,148 +1885,124 @@ Arjun is building a 4-hour MVP to showcase his skills to ${item.company.name}.
                 {mainTab === 'feed' ? (
                   /* --- PHASE 2: VC DISCOVERY FEED --- */
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                    <div>
-                      <div style={{ fontSize: '0.8rem', color: 'var(--accent-gold)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Phase 2: Curated Startup Feed</div>
-                      <h2 className="font-serif" style={{ fontSize: '1.6rem', color: 'var(--ink)', margin: '4px 0 8px 0' }}>High-Paying VC-Backed Startups (Tailored for Arjun)</h2>
-                      <p style={{ fontSize: '0.95rem', color: 'var(--text-muted)', margin: 0 }}>
-                        Top-tier Indian & Global VC startups (Peak XV, Accel India, YC, a16z) that give product engineers direct access to CTOs & high pay.
-                      </p>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px' }}>
+                      <div>
+                        <div style={{ fontSize: '0.8rem', color: 'var(--accent-gold)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Phase 2: Curated Startup Feed</div>
+                        <h2 className="font-serif" style={{ fontSize: '1.6rem', color: 'var(--ink)', margin: '4px 0 6px 0' }}>Top 4 Tailored Matches for You</h2>
+                        <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', margin: 0 }}>
+                          Curated top-4 startups matching your builder context from a pool of <strong>{discoveryFeed.length} verified companies</strong>.
+                        </p>
+                      </div>
+
+                      {/* Top Right Actions: 24h Timer + View More */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginLeft: 'auto' }}>
+                        <div className="font-mono" style={{ fontSize: '0.75rem', backgroundColor: 'var(--cream)', border: '1px solid var(--border-light)', color: 'var(--ink)', padding: '6px 12px', borderRadius: '20px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#10b981' }}></span>
+                          <span>Next 4 in: <strong>{timeUntilRotation}</strong></span>
+                        </div>
+
+                        <button 
+                          onClick={() => setShowViewMoreModal(true)}
+                          className="font-mono"
+                          style={{ padding: '8px 18px', borderRadius: '20px', fontSize: '0.82rem', fontWeight: 700, border: '1px solid var(--accent-gold)', cursor: 'pointer', backgroundColor: 'var(--ink)', color: 'var(--paper)', display: 'inline-flex', alignItems: 'center', gap: '6px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}
+                        >
+                          <span>View More ({discoveryFeed.length} Startups)</span>
+                          <ChevronRight size={15} />
+                        </button>
+                      </div>
                     </div>
 
-                    {/* Category Filter Tabs */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', borderBottom: '1px solid var(--border-light)', paddingBottom: '12px' }}>
-                      <button 
-                        onClick={() => setFeedFilterCategory('all')}
-                        className="font-mono"
-                        style={{ padding: '6px 14px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600, border: '1px solid', cursor: 'pointer', backgroundColor: feedFilterCategory === 'all' ? 'var(--ink)' : 'var(--paper)', color: feedFilterCategory === 'all' ? 'var(--paper)' : 'var(--text-muted)', borderColor: 'var(--border)' }}
-                      >
-                        All Startups ({discoveryFeed.length})
-                      </button>
-                      <button 
-                        onClick={() => setFeedFilterCategory('india')}
-                        className="font-mono"
-                        style={{ padding: '6px 14px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600, border: '1px solid', cursor: 'pointer', backgroundColor: feedFilterCategory === 'india' ? 'var(--accent-gold)' : 'var(--paper)', color: feedFilterCategory === 'india' ? 'white' : 'var(--text-muted)', borderColor: 'var(--border)' }}
-                      >
-                        High-Paying Indian VC Startups
-                      </button>
-                      <button 
-                        onClick={() => setFeedFilterCategory('yc')}
-                        className="font-mono"
-                        style={{ padding: '6px 14px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600, border: '1px solid', cursor: 'pointer', backgroundColor: feedFilterCategory === 'yc' ? '#f97316' : 'var(--paper)', color: feedFilterCategory === 'yc' ? 'white' : 'var(--text-muted)', borderColor: 'var(--border)' }}
-                      >
-                        Y Combinator (YC)
-                      </button>
-                      <button 
-                        onClick={() => setFeedFilterCategory('early_stage')}
-                        className="font-mono"
-                        style={{ padding: '6px 14px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600, border: '1px solid', cursor: 'pointer', backgroundColor: feedFilterCategory === 'early_stage' ? '#0284c7' : 'var(--paper)', color: feedFilterCategory === 'early_stage' ? 'white' : 'var(--text-muted)', borderColor: 'var(--border)' }}
-                      >
-                        Seed / Series A (&lt;25 eng)
-                      </button>
-                      <button 
-                        onClick={() => setFeedFilterCategory('high_pay')}
-                        className="font-mono"
-                        style={{ padding: '6px 14px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600, border: '1px solid', cursor: 'pointer', backgroundColor: feedFilterCategory === 'high_pay' ? '#16a34a' : 'var(--paper)', color: feedFilterCategory === 'high_pay' ? 'white' : 'var(--text-muted)', borderColor: 'var(--border)' }}
-                      >
-                        High Pay (₹25L+ / $90k+)
-                      </button>
+                    {/* Top 4 Clean Startup Cards Grid */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                      {(() => {
+                        const sorted = [...discoveryFeed].sort((a, b) => (b.fit_score || 0) - (a.fit_score || 0));
+                        const top4 = [];
+                        for (let i = 0; i < Math.min(4, sorted.length); i++) {
+                          top4.push(sorted[(rotationOffset + i) % sorted.length]);
+                        }
+                        return top4;
+                      })().map((item, idx) => {
+                        const isIndian = (item as any).region_tag === 'india' || item.name === 'Appsmith' || item.name === 'SigNoz' || item.name === 'DrDroid' || item.name === 'Raven' || item.name === 'Peoplebox.ai' || item.name === 'OrbitShift' || item.name === 'Vorflux' || item.name === 'Aina' || item.name === 'Reo.Dev';
+                        const isEurope = (item as any).region_tag === 'europe' || item.name === 'Lago' || item.name === 'LiveFlow' || item.name === 'Hub';
+                        const compTier = (item as any).compensation_tier || (isIndian ? "₹30L - ₹55L" : "$100k - $160k");
+                        const fitPct = Math.round((item.fit_score || 0.85) * 100);
+                        const tierLabel = item.funding_stage && item.funding_stage.toLowerCase().includes('tier 2') ? 'Tier 2' : 'Tier 1';
 
-                      <button 
-                        onClick={handleRefreshFeed}
-                        className="font-mono"
-                        style={{ padding: '6px 14px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600, border: '1px solid var(--accent-gold)', cursor: 'pointer', backgroundColor: 'var(--cream)', color: 'var(--accent-gold)', marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                        disabled={isRefreshingFeed}
-                      >
-                        <span>{isRefreshingFeed ? 'Syncing New VC Launches...' : 'Refresh VC Feed'}</span>
-                      </button>
-                    </div>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                      {discoveryFeed
-                        .filter(item => {
-                          if (feedFilterCategory === 'india') {
-                            return (item as any).region_tag === 'india' || item.name === 'Appsmith' || item.name === 'SigNoz' || item.name === 'Devtron' || item.name === 'Hasura' || item.name === 'Middleware' || item.name === 'Atlan';
-                          }
-                          if (feedFilterCategory === 'yc') {
-                            return item.investor_tags && item.investor_tags.some((t: string) => t.toLowerCase().includes('yc'));
-                          }
-                          if (feedFilterCategory === 'early_stage') {
-                            return (item.employee_count_approx || 10) <= 25;
-                          }
-                          return true;
-                        })
-                        .map(item => {
-                          const isIndian = (item as any).region_tag === 'india' || item.name === 'Appsmith' || item.name === 'SigNoz' || item.name === 'Devtron' || item.name === 'Hasura' || item.name === 'Middleware' || item.name === 'Atlan';
-                          const compTier = (item as any).compensation_tier || (isIndian ? "₹25L - ₹50L" : "$90k - $140k");
-
-                          return (
-                            <div 
-                              key={item.id} 
-                              className="paper-card" 
-                              style={{ padding: '20px', borderRadius: '12px', backgroundColor: 'var(--paper)', border: '1px solid var(--border-light)', display: 'flex', flexDirection: 'column', gap: '12px', cursor: 'pointer' }}
-                              onClick={() => {
-                                setLinkInput(item.url);
-                                setMainTab('analyzer');
-                                handleExtractCompany(item.url);
-                              }}
-                            >
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                  <CompanyLogo name={item.name} size={32} />
-                                  <div>
-                                    <div style={{ fontWeight: 700, fontSize: '1.05rem', color: 'var(--ink)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                      <span>{item.name}</span>
-                                      {isIndian && <span style={{ fontSize: '0.7rem', padding: '1px 5px', borderRadius: '4px', backgroundColor: '#fef3c7', color: '#92400e', fontWeight: 700 }}>India</span>}
-                                    </div>
-                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>{item.funding_stage ? item.funding_stage.toUpperCase() : 'SEED'} • ~{item.employee_count_approx || 10} members</div>
+                        return (
+                          <div 
+                            key={item.id || idx} 
+                            className="paper-card" 
+                            style={{ 
+                              padding: '22px', 
+                              borderRadius: '14px', 
+                              backgroundColor: 'var(--paper)', 
+                              border: '1px solid var(--border-light)', 
+                              display: 'flex', 
+                              flexDirection: 'column', 
+                              gap: '14px', 
+                              cursor: 'pointer',
+                              position: 'relative',
+                              transition: 'transform 0.15s ease, box-shadow 0.15s ease'
+                            }}
+                            onClick={() => {
+                              setLinkInput(item.url);
+                              setMainTab('analyzer');
+                              handleExtractCompany(item.url);
+                            }}
+                          >
+                            {/* Card Top Row: Logo + Name + Badges */}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                <CompanyLogo name={item.name} size={36} />
+                                <div>
+                                  <div style={{ fontWeight: 700, fontSize: '1.1rem', color: 'var(--ink)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <span>{item.name}</span>
+                                    <span style={{ fontSize: '0.68rem', padding: '2px 7px', borderRadius: '6px', backgroundColor: tierLabel === 'Tier 1' ? '#ecfdf5' : '#fef3c7', color: tierLabel === 'Tier 1' ? '#047857' : '#b45309', border: `1px solid ${tierLabel === 'Tier 1' ? '#a7f3d0' : '#fde68a'}`, fontWeight: 700 }}>
+                                      {tierLabel}
+                                    </span>
+                                    <span style={{ fontSize: '0.7rem', padding: '2px 6px', borderRadius: '4px', backgroundColor: 'var(--cream)', color: 'var(--text-muted)', border: '1px solid var(--border-light)', fontWeight: 600 }}>
+                                      {isIndian ? '🇮🇳 India' : isEurope ? '🇪🇺 Europe' : '🇺🇸 USA'}
+                                    </span>
+                                  </div>
+                                  <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                                    {item.role || "Product Engineer"} • <span style={{ color: 'var(--accent-gold)', fontWeight: 600 }}>{compTier}</span>
                                   </div>
                                 </div>
-
-                                {/* Health Badge */}
-                                {item.health?.verdict === 'verified_safe' ? (
-                                  <span style={{ fontSize: '0.7rem', backgroundColor: '#dcfce7', color: '#15803d', border: '1px solid #bbf7d0', padding: '2px 8px', borderRadius: '12px', fontWeight: 700 }}>
-                                    Verified Safe
-                                  </span>
-                                ) : item.health?.verdict === 'high_risk' ? (
-                                  <span style={{ fontSize: '0.7rem', backgroundColor: '#fee2e2', color: '#b91c1c', border: '1px solid #fca5a5', padding: '2px 8px', borderRadius: '12px', fontWeight: 700 }}>
-                                    High Risk
-                                  </span>
-                                ) : (
-                                  <span style={{ fontSize: '0.7rem', backgroundColor: '#fef3c7', color: '#b45309', border: '1px solid #fde68a', padding: '2px 8px', borderRadius: '12px', fontWeight: 700 }}>
-                                    Verified Safe
-                                  </span>
-                                )}
                               </div>
 
-                              {/* Compensation Tier Badge */}
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                <span className="font-mono" style={{ fontSize: '0.72rem', backgroundColor: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0', padding: '2px 8px', borderRadius: '6px', fontWeight: 700 }}>
-                                  Pay: {compTier}
-                                </span>
-                                <span className="font-mono" style={{ fontSize: '0.72rem', backgroundColor: 'var(--cream)', color: 'var(--ink)', border: '1px solid var(--border-light)', padding: '2px 8px', borderRadius: '6px', fontWeight: 600 }}>
-                                  Direct CTO Outreach
-                                </span>
-                              </div>
-
-                              <div style={{ fontSize: '0.8rem', backgroundColor: 'var(--cream)', color: 'var(--ink)', padding: '6px 10px', borderRadius: '6px', fontWeight: 600 }}>
-                                {item.why_for_you || "Matches your builder profile"}
-                              </div>
-
-                              {/* Tech stack tags */}
-                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                                {item.tech_stack_tags?.map((t: string) => (
-                                  <span key={t} style={{ fontSize: '0.7rem', backgroundColor: 'var(--surface)', border: '1px solid var(--border-light)', color: 'var(--text-muted)', padding: '2px 6px', borderRadius: '4px' }}>
-                                    {t}
-                                  </span>
-                                ))}
-                              </div>
-
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px', fontSize: '0.8rem', color: 'var(--accent-gold)', fontWeight: 600 }}>
-                                <span>Inspect Opportunities ({item.evidence_count} evidence items) →</span>
+                              {/* Fit Score Badge */}
+                              <div className="font-mono" style={{ padding: '4px 10px', borderRadius: '20px', backgroundColor: fitPct >= 85 ? '#dcfce7' : '#fef3c7', color: fitPct >= 85 ? '#15803d' : '#b45309', border: `1px solid ${fitPct >= 85 ? '#bbf7d0' : '#fde68a'}`, fontWeight: 800, fontSize: '0.78rem' }}>
+                                {fitPct}% Fit
                               </div>
                             </div>
-                          );
-                        })}
+
+                            {/* Why It Fits Container */}
+                            <div style={{ fontSize: '0.82rem', backgroundColor: 'var(--cream)', color: 'var(--ink)', padding: '10px 12px', borderRadius: '8px', borderLeft: '3px solid var(--accent-gold)', lineHeight: 1.45 }}>
+                              {item.why_for_you || "High-alignment match for your product engineering background."}
+                            </div>
+
+                            {/* Tech Stack Pills */}
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
+                              {item.tech_stack_tags?.map((t: string) => (
+                                <span key={t} className="font-mono" style={{ fontSize: '0.7rem', backgroundColor: 'var(--surface)', border: '1px solid var(--border-light)', color: 'var(--text-muted)', padding: '3px 8px', borderRadius: '6px' }}>
+                                  {t}
+                                </span>
+                              ))}
+                            </div>
+
+                            {/* Action Footer */}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2px', borderTop: '1px dashed var(--border-light)', paddingTop: '10px' }}>
+                              <span style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>
+                                {item.funding || 'YC Backed'}
+                              </span>
+                              <span className="font-mono" style={{ fontSize: '0.8rem', color: 'var(--accent-gold)', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                <span>Inspect Opportunities</span>
+                                <ArrowRight size={13} />
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 ) : mainTab === 'bounties' ? (
@@ -2562,6 +2585,157 @@ Arjun is building a 4-hour MVP to showcase his skills to ${item.company.name}.
           </div>
         )}
       </div>
+
+      {/* VIEW MORE STARTUPS MODAL / DRAWER */}
+      {showViewMoreModal && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 100, backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', justifyContent: 'flex-end' }}>
+          <div style={{ width: '100%', maxWidth: '850px', backgroundColor: 'var(--paper)', height: '100%', display: 'flex', flexDirection: 'column', boxShadow: '-4px 0 24px rgba(0,0,0,0.2)' }}>
+            
+            {/* Modal Header */}
+            <div style={{ padding: '24px 32px', borderBottom: '1px solid var(--border-light)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'var(--surface)' }}>
+              <div>
+                <div style={{ fontSize: '0.78rem', color: 'var(--accent-gold)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  All Verified Opportunities
+                </div>
+                <h2 className="font-serif" style={{ fontSize: '1.5rem', color: 'var(--ink)', margin: '4px 0 0 0' }}>
+                  Verified Startup Feed ({discoveryFeed.length} Companies)
+                </h2>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <button 
+                  onClick={handleForceRotate}
+                  disabled={isRefreshingFeed}
+                  className="font-mono"
+                  style={{ padding: '7px 14px', borderRadius: '8px', fontSize: '0.78rem', fontWeight: 600, border: '1px solid var(--accent-gold)', cursor: 'pointer', backgroundColor: 'var(--cream)', color: 'var(--accent-gold)', display: 'inline-flex', alignItems: 'center', gap: '6px', opacity: isRefreshingFeed ? 0.6 : 1 }}
+                >
+                  <RefreshCw size={13} className={isRefreshingFeed ? "animate-spin" : ""} />
+                  <span>{isRefreshingFeed ? 'Rotating...' : 'Force 24h Rotation Now'}</span>
+                </button>
+
+                <button 
+                  onClick={() => setShowViewMoreModal(false)}
+                  style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '6px' }}
+                >
+                  <X size={22} />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Search & Controls */}
+            <div style={{ padding: '16px 32px', borderBottom: '1px solid var(--border-light)', backgroundColor: 'var(--paper)', display: 'flex', gap: '12px', alignItems: 'center' }}>
+              <div style={{ flex: 1, position: 'relative' }}>
+                <Search size={16} color="var(--text-dim)" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
+                <input 
+                  type="text" 
+                  placeholder="Search 40+ startups by name, stack, role, or location..."
+                  value={viewMoreSearch}
+                  onChange={(e) => setViewMoreSearch(e.target.value)}
+                  style={{ width: '100%', padding: '10px 12px 10px 36px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '0.88rem', backgroundColor: 'var(--surface)', color: 'var(--ink)' }}
+                />
+              </div>
+
+              {/* Category Filter Chips */}
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <button 
+                  onClick={() => setFeedFilterCategory('all')}
+                  className="font-mono"
+                  style={{ padding: '6px 12px', borderRadius: '6px', fontSize: '0.78rem', fontWeight: 600, border: '1px solid', cursor: 'pointer', backgroundColor: feedFilterCategory === 'all' ? 'var(--ink)' : 'var(--paper)', color: feedFilterCategory === 'all' ? 'var(--paper)' : 'var(--text-muted)', borderColor: 'var(--border)' }}
+                >
+                  All ({discoveryFeed.length})
+                </button>
+                <button 
+                  onClick={() => setFeedFilterCategory('india')}
+                  className="font-mono"
+                  style={{ padding: '6px 12px', borderRadius: '6px', fontSize: '0.78rem', fontWeight: 600, border: '1px solid', cursor: 'pointer', backgroundColor: feedFilterCategory === 'india' ? 'var(--accent-gold)' : 'var(--paper)', color: feedFilterCategory === 'india' ? 'white' : 'var(--text-muted)', borderColor: 'var(--border)' }}
+                >
+                  🇮🇳 India
+                </button>
+                <button 
+                  onClick={() => setFeedFilterCategory('yc')}
+                  className="font-mono"
+                  style={{ padding: '6px 12px', borderRadius: '6px', fontSize: '0.78rem', fontWeight: 600, border: '1px solid', cursor: 'pointer', backgroundColor: feedFilterCategory === 'yc' ? '#f97316' : 'var(--paper)', color: feedFilterCategory === 'yc' ? 'white' : 'var(--text-muted)', borderColor: 'var(--border)' }}
+                >
+                  Tier 1 / YC
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Body List */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '24px 32px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', alignContent: 'start' }}>
+              {discoveryFeed
+                .filter(item => {
+                  if (viewMoreSearch.trim()) {
+                    const q = viewMoreSearch.toLowerCase();
+                    const nameMatch = item.name.toLowerCase().includes(q);
+                    const roleMatch = (item.role || '').toLowerCase().includes(q);
+                    const stackMatch = item.tech_stack_tags?.some((t: string) => t.toLowerCase().includes(q));
+                    if (!nameMatch && !roleMatch && !stackMatch) return false;
+                  }
+                  if (feedFilterCategory === 'india') {
+                    return (item as any).region_tag === 'india' || item.name === 'Appsmith' || item.name === 'SigNoz' || item.name === 'DrDroid' || item.name === 'Raven' || item.name === 'Peoplebox.ai' || item.name === 'OrbitShift' || item.name === 'Vorflux' || item.name === 'Aina' || item.name === 'Reo.Dev';
+                  }
+                  if (feedFilterCategory === 'yc') {
+                    return item.investor_tags && item.investor_tags.some((t: string) => t.toLowerCase().includes('yc') || t.toLowerCase().includes('tier_1'));
+                  }
+                  return true;
+                })
+                .map(item => {
+                  const isIndian = (item as any).region_tag === 'india' || item.name === 'Appsmith' || item.name === 'SigNoz' || item.name === 'DrDroid' || item.name === 'Raven' || item.name === 'Peoplebox.ai' || item.name === 'OrbitShift' || item.name === 'Vorflux' || item.name === 'Aina' || item.name === 'Reo.Dev';
+                  const isEurope = (item as any).region_tag === 'europe' || item.name === 'Lago' || item.name === 'LiveFlow' || item.name === 'Hub';
+                  const compTier = (item as any).compensation_tier || (isIndian ? "₹30L - ₹55L" : "$100k - $160k");
+                  const fitPct = Math.round((item.fit_score || 0.85) * 100);
+                  const tierLabel = item.funding_stage && item.funding_stage.toLowerCase().includes('tier 2') ? 'Tier 2' : 'Tier 1';
+
+                  return (
+                    <div 
+                      key={item.id} 
+                      className="paper-card" 
+                      style={{ padding: '18px', borderRadius: '12px', backgroundColor: 'var(--paper)', border: '1px solid var(--border-light)', display: 'flex', flexDirection: 'column', gap: '10px', cursor: 'pointer' }}
+                      onClick={() => {
+                        setShowViewMoreModal(false);
+                        setLinkInput(item.url);
+                        setMainTab('analyzer');
+                        handleExtractCompany(item.url);
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <CompanyLogo name={item.name} size={32} />
+                          <div>
+                            <div style={{ fontWeight: 700, fontSize: '1.02rem', color: 'var(--ink)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <span>{item.name}</span>
+                              <span style={{ fontSize: '0.65rem', padding: '1px 5px', borderRadius: '4px', backgroundColor: tierLabel === 'Tier 1' ? '#ecfdf5' : '#fef3c7', color: tierLabel === 'Tier 1' ? '#047857' : '#b45309', border: `1px solid ${tierLabel === 'Tier 1' ? '#a7f3d0' : '#fde68a'}`, fontWeight: 700 }}>
+                                {tierLabel}
+                              </span>
+                            </div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{isIndian ? '🇮🇳 India' : isEurope ? '🇪🇺 Europe' : '🇺🇸 USA'} • {compTier}</div>
+                          </div>
+                        </div>
+
+                        <div className="font-mono" style={{ padding: '2px 8px', borderRadius: '12px', backgroundColor: fitPct >= 85 ? '#dcfce7' : '#fef3c7', color: fitPct >= 85 ? '#15803d' : '#b45309', fontSize: '0.75rem', fontWeight: 700 }}>
+                          {fitPct}%
+                        </div>
+                      </div>
+
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>
+                        {item.why_for_you || "Matches your candidate profile"}
+                      </div>
+
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                        {item.tech_stack_tags?.slice(0, 4).map((t: string) => (
+                          <span key={t} className="font-mono" style={{ fontSize: '0.68rem', backgroundColor: 'var(--surface)', border: '1px solid var(--border-light)', color: 'var(--text-muted)', padding: '2px 6px', borderRadius: '4px' }}>
+                            {t}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+        </div>
+      )}
     </>
     )}
   </div>
