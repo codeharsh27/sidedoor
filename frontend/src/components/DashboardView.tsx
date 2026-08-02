@@ -391,7 +391,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ userProfile, supab
 
     // Load Phase 2 VC Discovery Feed
     apiClient.getCompanyFeed(currentUserId)
-      .then(setDiscoveryFeed)
+      .then(fresh => {
+        if (fresh && fresh.length > 0) {
+          setDiscoveryFeed(fresh);
+        }
+      })
       .catch(err => console.error("Error loading discovery feed:", err));
 
     // Load Paid Bounties & Solo Hackathons
