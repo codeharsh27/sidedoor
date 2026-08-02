@@ -87,86 +87,62 @@ async def search_companies(queries: list[str]) -> list[dict]:
     for query in queries:
         logger.info(f"Executing scouting query: {query}")
         
-        # 1. Check for site-specific YC directory query
-        if "ycombinator.com" in query.lower():
-            # YC Directory structured scraping
-            yc_results = [
-                {
-                    "name": "Oximy",
-                    "website": "https://oximy.com",
-                    "jd_title": "AI Product Engineer / Manager",
-                    "jd_text": "Oximy is building next-gen AI search. We need a Product Engineer/Manager with Python, TypeScript, React, and Anthropic API experience to prototype AI features.",
-                    "jd_url": "https://ycombinator.com/companies/oximy/jobs/10293",
-                    "source_type": "yc_directory"
-                },
-                {
-                    "name": "Resend",
-                    "website": "https://resend.com",
-                    "jd_title": "Founding Full Stack Engineer",
-                    "jd_text": "Resend is the email platform for developers. Looking for full stack engineers skilled in React, Next.js, Node.js, and PostgreSQL.",
-                    "jd_url": "https://ycombinator.com/companies/resend/jobs/8812",
-                    "source_type": "yc_directory"
-                },
-                {
-                    "name": "Superhuman",
-                    "website": "https://superhuman.com",
-                    "jd_title": "Senior AI Systems Engineer",
-                    "jd_text": "Superhuman makes the fastest email experience in the world. Building automated AI triage features using Python, FastAPI, and vector embeddings.",
-                    "jd_url": "https://superhuman.com/careers/ai-engineer",
-                    "source_type": "yc_directory"
-                }
-            ]
-            for item in yc_results:
-                if item["jd_url"] not in seen_urls:
-                    seen_urls.add(item["jd_url"])
-                    results.append(item)
-        elif "wellfound.com" in query.lower():
-            # Wellfound structured scraping
-            wf_results = [
-                {
-                    "name": "PostHog",
-                    "website": "https://posthog.com",
-                    "jd_title": "Full Stack Product Engineer",
-                    "jd_text": "PostHog is an open-source product analytics suite. We hire Product Engineers fluent in Python, Django, TypeScript, and React to own end-to-end features.",
-                    "jd_url": "https://wellfound.com/company/posthog/jobs/product-engineer",
-                    "source_type": "wellfound"
-                },
-                {
-                    "name": "Vercel",
-                    "website": "https://vercel.com",
-                    "jd_title": "Frontend Platform Engineer",
-                    "jd_text": "Vercel powers the web. Building next-generation developer tooling with Next.js, React, TypeScript, and Rust.",
-                    "jd_url": "https://vercel.com/careers/frontend-engineer",
-                    "source_type": "wellfound"
-                }
-            ]
-            for item in wf_results:
-                if item["jd_url"] not in seen_urls:
-                    seen_urls.add(item["jd_url"])
-                    results.append(item)
-        else:
-            # Generic query search results
-            gen_results = [
-                {
-                    "name": "LangChain",
-                    "website": "https://langchain.com",
-                    "jd_title": "AI Infrastructure Engineer",
-                    "jd_text": "LangChain is building the framework for LLM applications. Needs Python, FastAPI, TypeScript, and LLM orchestration experience.",
-                    "jd_url": "https://langchain.com/careers",
-                    "source_type": "web_search"
-                },
-                {
-                    "name": "Pinecone",
-                    "website": "https://pinecone.io",
-                    "jd_title": "Backend Systems Engineer",
-                    "jd_text": "Pinecone provides vector database infrastructure for enterprise AI. We seek backend engineers with Python, Go, and PostgreSQL skills.",
-                    "jd_url": "https://pinecone.io/careers",
-                    "source_type": "web_search"
-                }
-            ]
-            for item in gen_results:
-                if item["jd_url"] not in seen_urls:
-                    seen_urls.add(item["jd_url"])
-                    results.append(item)
+    # Curated Tier 1 & Tier 2 YC/VC Companies list
+    CURATED_COMPANIES = [
+        # Tier 1 - India & Global
+        {"name": "DrDroid", "website": "https://www.drdroid.io", "jd_title": "AI Observability Engineer", "jd_text": "DrDroid is building automated incident resolution & debugging agents for production systems using Python, FastAPI, and OpenTelemetry.", "jd_url": "https://www.ycombinator.com/companies/drdroid", "tier": "Tier 1", "region": "India"},
+        {"name": "Raven", "website": "https://raven.dev", "jd_title": "Full Stack Engineer", "jd_text": "Raven provides event-driven notification infrastructure for developer applications using Node.js, TypeScript, and React.", "jd_url": "https://www.ycombinator.com/companies/raven", "tier": "Tier 1", "region": "India"},
+        {"name": "Peoplebox.ai", "website": "https://www.peoplebox.ai", "jd_title": "Product Engineer", "jd_text": "Peoplebox.ai connects strategy and OKRs with real-time AI performance management using React, Python, and PostgreSQL.", "jd_url": "https://www.ycombinator.com/companies/peoplebox", "tier": "Tier 1", "region": "India"},
+        {"name": "OrbitShift", "website": "https://www.orbitshift.ai", "jd_title": "AI Systems Engineer", "jd_text": "OrbitShift builds enterprise sales intelligence platforms using AI & LLM agents with Python, FastAPI, and TypeScript.", "jd_url": "https://www.orbitshift.ai", "tier": "Tier 1", "region": "India"},
+        {"name": "Vorflux", "website": "https://vorflux.com", "jd_title": "Founding Engineer", "jd_text": "Vorflux is building automated workflow orchestration for modern data engineering teams using Python, Rust, and React.", "jd_url": "https://www.ycombinator.com/companies/vorflux", "tier": "Tier 1", "region": "India"},
+        {"name": "Aina", "website": "https://www.aina.com", "jd_title": "Multimodal AI Engineer", "jd_text": "Aina builds generative AI voice & multimodal customer engagement tools using Python, PyTorch, and React.", "jd_url": "https://www.aina.com", "tier": "Tier 1", "region": "India"},
+        {"name": "Reo.Dev", "website": "https://reo.dev", "jd_title": "Full Stack Builder", "jd_text": "Reo.Dev builds developer intent revenue intelligence for B2B developer products using TypeScript, React, and Python.", "jd_url": "https://reo.dev", "tier": "Tier 1", "region": "India"},
+        {"name": "LiteLLM", "website": "https://litellm.ai", "jd_title": "AI Proxy Engineer", "jd_text": "LiteLLM is the universal proxy for calling 100+ LLM APIs with unified logging & cost tracking using Python, FastAPI, and React.", "jd_url": "https://www.ycombinator.com/companies/litellm", "tier": "Tier 1", "region": "USA"},
+        {"name": "Alphawatch AI", "website": "https://alphawatch.ai", "jd_title": "LLM Research Engineer", "jd_text": "Alphawatch AI provides financial research tools powered by generative LLMs with Python, LangChain, and React.", "jd_url": "https://www.ycombinator.com/companies/alphawatch-ai", "tier": "Tier 1", "region": "USA"},
+        {"name": "Berry", "website": "https://berry.ai", "jd_title": "AI Evaluation Engineer", "jd_text": "Berry automates AI agent evaluation & security benchmarking using Python, FastAPI, and TypeScript.", "jd_url": "https://www.ycombinator.com/companies/berry", "tier": "Tier 1", "region": "USA"},
+        {"name": "Deep Interactions", "website": "https://deepinteractions.com", "jd_title": "Product Engineer", "jd_text": "Deep Interactions builds generative AI tools for interaction design using React, TypeScript, and Python.", "jd_url": "https://www.ycombinator.com/companies/deep-interactions", "tier": "Tier 1", "region": "USA"},
+        {"name": "Unsiloed AI", "website": "https://unsiloed.ai", "jd_title": "Database AI Engineer", "jd_text": "Unsiloed AI unlocks siloed enterprise database knowledge with AI agents using Python, PostgreSQL, and React.", "jd_url": "https://www.ycombinator.com/companies/unsiloed-ai", "tier": "Tier 1", "region": "USA"},
+        {"name": "Clicks", "website": "https://clicks.ai", "jd_title": "Growth Engineer", "jd_text": "Clicks powers AI web search & conversion optimization using TypeScript, React, and Python.", "jd_url": "https://www.ycombinator.com/companies/clicks", "tier": "Tier 1", "region": "USA"},
+        {"name": "Tesora", "website": "https://tesora.ai", "jd_title": "Fintech AI Engineer", "jd_text": "Tesora builds AI wealth & tax strategy infrastructure using Python, FastAPI, and React.", "jd_url": "https://www.ycombinator.com/companies/tesora", "tier": "Tier 1", "region": "USA"},
+        {"name": "GovDash", "website": "https://govdash.com", "jd_title": "Full Stack Engineer", "jd_text": "GovDash streamlines government contracting & RFP workflows with AI using Next.js, TypeScript, and Python.", "jd_url": "https://www.ycombinator.com/companies/govdash", "tier": "Tier 1", "region": "USA"},
+        {"name": "Skypher", "website": "https://skypher.ai", "jd_title": "Security AI Engineer", "jd_text": "Skypher automates vendor security questionnaires using generative AI with Python, React, and FastAPI.", "jd_url": "https://www.ycombinator.com/companies/skypher", "tier": "Tier 1", "region": "USA"},
+        {"name": "Draftwise", "website": "https://draftwise.com", "jd_title": "Legal Tech Engineer", "jd_text": "Draftwise provides contract drafting and knowledge platform for top law firms using Python, React, and PostgreSQL.", "jd_url": "https://www.ycombinator.com/companies/draftwise", "tier": "Tier 1", "region": "USA"},
+        {"name": "Fleetline", "website": "https://fleetline.ai", "jd_title": "Logistics Systems Engineer", "jd_text": "Fleetline builds logistics fleet automation software using Python, Go, and React.", "jd_url": "https://www.ycombinator.com/companies/fleetline", "tier": "Tier 1", "region": "USA"},
+        {"name": "Auctor", "website": "https://auctor.ai", "jd_title": "AI GTM Builder", "jd_text": "Auctor automates enterprise sales operations & pitch deck creation with LLMs using Python, React, and OpenAI API.", "jd_url": "https://www.ycombinator.com/companies/auctor", "tier": "Tier 1", "region": "USA"},
+        {"name": "Hyperspell", "website": "https://hyperspell.com", "jd_title": "Memory Systems Engineer", "jd_text": "Hyperspell builds personalized AI memory infrastructure for developer tools using Python, Rust, and TypeScript.", "jd_url": "https://www.ycombinator.com/companies/hyperspell", "tier": "Tier 1", "region": "USA"},
+        # Tier 2 - India, USA, Europe
+        {"name": "SuperKalam", "website": "https://superkalam.com", "jd_title": "EdTech AI Builder", "jd_text": "SuperKalam is an AI personal tutor for competitive exams in India built with Python, React, and LLMs.", "jd_url": "https://www.ycombinator.com/companies/superkalam", "tier": "Tier 2", "region": "India"},
+        {"name": "Landeed", "website": "https://landeed.com", "jd_title": "Search Engine Engineer", "jd_text": "Landeed is India's fastest land title search engine built with Python, React Native, and PostgreSQL.", "jd_url": "https://www.ycombinator.com/companies/landeed", "tier": "Tier 2", "region": "India"},
+        {"name": "Infinity", "website": "https://infinity.finance", "jd_title": "Fintech Full Stack", "jd_text": "Infinity builds wealth management infrastructure for retail investors using TypeScript, React, and Python.", "jd_url": "https://www.ycombinator.com/companies/infinity", "tier": "Tier 2", "region": "India"},
+        {"name": "Paasa", "website": "https://paasa.io", "jd_title": "Payments Engineer", "jd_text": "Paasa builds global treasury and cross-border payments software using Go, React, and PostgreSQL.", "jd_url": "https://www.ycombinator.com/companies/paasa", "tier": "Tier 2", "region": "India"},
+        {"name": "xPay", "website": "https://xpay.checkout", "jd_title": "Checkout Engineer", "jd_text": "xPay provides unified checkout infrastructure for emerging markets using Node.js, TypeScript, and React.", "jd_url": "https://www.ycombinator.com/companies/xpay", "tier": "Tier 2", "region": "India"},
+        {"name": "100x", "website": "https://100x.dev", "jd_title": "DevTool Engineer", "jd_text": "100x is building developer tools & automated code testing platforms using Python, Rust, and React.", "jd_url": "https://www.ycombinator.com/companies/100x", "tier": "Tier 2", "region": "India"},
+        {"name": "Rivia.AI", "website": "https://rivia.ai", "jd_title": "Product Demo Builder", "jd_text": "Rivia.AI creates interactive product demos automatically for B2B SaaS using React, Chrome Extensions, and Node.js.", "jd_url": "https://www.ycombinator.com/companies/rivia-ai", "tier": "Tier 2", "region": "India"},
+        {"name": "CARPL.ai", "website": "https://carpl.ai", "jd_title": "MedTech AI Engineer", "jd_text": "CARPL.ai is the enterprise marketplace for AI radiology & medical imaging using Python, DICOM, and React.", "jd_url": "https://carpl.ai", "tier": "Tier 2", "region": "India"},
+        {"name": "HireGlide", "website": "https://hireglide.com", "jd_title": "AI Interview Engineer", "jd_text": "HireGlide builds AI technical interviewing tools for engineering teams using Python, WebRTC, and React.", "jd_url": "https://www.ycombinator.com/companies/hireglide", "tier": "Tier 2", "region": "USA"},
+        {"name": "Outrove", "website": "https://outrove.com", "jd_title": "Outbound Sales Builder", "jd_text": "Outrove builds outbound sales automation platforms using TypeScript, React, and Python.", "jd_url": "https://www.ycombinator.com/companies/outrove", "tier": "Tier 2", "region": "USA"},
+        {"name": "Clado", "website": "https://clado.ai", "jd_title": "Vector Search Engineer", "jd_text": "Clado is building distributed search engines for vector embeddings using C++, Rust, and Python.", "jd_url": "https://www.ycombinator.com/companies/clado", "tier": "Tier 2", "region": "USA"},
+        {"name": "Refresh", "website": "https://refresh.ai", "jd_title": "CRM Automation Engineer", "jd_text": "Refresh automates CRM contact enrichment with generative web scraping using Python, Playwright, and React.", "jd_url": "https://www.ycombinator.com/companies/refresh", "tier": "Tier 2", "region": "USA"},
+        {"name": "Empirical", "website": "https://empirical.run", "jd_title": "QA Agent Engineer", "jd_text": "Empirical automates software testing & code review with AI agents using TypeScript, Playwright, and Python.", "jd_url": "https://www.ycombinator.com/companies/empirical", "tier": "Tier 2", "region": "USA"},
+        {"name": "Aseon Labs", "website": "https://aseonlabs.com", "jd_title": "Hardware AI Engineer", "jd_text": "Aseon Labs builds AI agents for hardware & chip design verification using Python and Verilog.", "jd_url": "https://www.ycombinator.com/companies/aseon-labs", "tier": "Tier 2", "region": "USA"},
+        {"name": "Contrario", "website": "https://contrario.ai", "jd_title": "GTM Intelligence Engineer", "jd_text": "Contrario builds competitive intelligence platforms for modern GTM teams using Python, React, and LLMs.", "jd_url": "https://www.ycombinator.com/companies/contrario", "tier": "Tier 2", "region": "USA"},
+        {"name": "Standout", "website": "https://standout.ai", "jd_title": "Talent Ranking Engineer", "jd_text": "Standout builds candidate resume & portfolio ranking platforms using Python, FastAPI, and React.", "jd_url": "https://www.ycombinator.com/companies/standout", "tier": "Tier 2", "region": "USA"},
+        {"name": "Lago", "website": "https://getlago.com", "jd_title": "Billing Systems Engineer", "jd_text": "Lago is the open-source metering and usage-based billing platform built with Ruby, Go, and React.", "jd_url": "https://www.ycombinator.com/companies/lago", "tier": "Tier 2", "region": "Europe"},
+        {"name": "LiveFlow", "website": "https://liveflow.io", "jd_title": "FinTech Integrations Builder", "jd_text": "LiveFlow automates financial reporting by syncing QuickBooks to Google Sheets using TypeScript, React, and Node.js.", "jd_url": "https://www.ycombinator.com/companies/liveflow", "tier": "Tier 2", "region": "Europe"},
+        {"name": "Ashby", "website": "https://ashbyhq.com", "jd_title": "Product Engineer", "jd_text": "Ashby builds all-in-one recruiting, ATS, and analytics software using TypeScript, React, and Node.js.", "jd_url": "https://www.ycombinator.com/companies/ashby", "tier": "Tier 2", "region": "USA"},
+        {"name": "Hub", "website": "https://hub.app", "jd_title": "Workspace Engineer", "jd_text": "Hub provides collaborative workspaces for modern remote engineering teams using React, WebSockets, and Node.js.", "jd_url": "https://www.ycombinator.com/companies/hub", "tier": "Tier 2", "region": "Europe"}
+    ]
+
+    for item in CURATED_COMPANIES:
+        if item["jd_url"] not in seen_urls:
+            seen_urls.add(item["jd_url"])
+            results.append({
+                "name": item["name"],
+                "website": item["website"],
+                "jd_title": item["jd_title"],
+                "jd_text": item["jd_text"],
+                "jd_url": item["jd_url"],
+                "source_type": f"yc_{item['tier'].lower().replace(' ', '_')}"
+            })
 
     return results
