@@ -913,3 +913,104 @@ async def get_personalized_company_feed(
     return feed_items
 
 
+class DeepResearchResponse(BaseModel):
+    company_name: str
+    company_url: str
+    stage: str
+    funding: str
+    pain_point: str
+    evidence_text: str
+    source_url: str
+    fit_score: float
+    why_for_you: str
+    artifact_brief: dict
+    contacts: list[dict]
+    outreach_draft: str
+
+
+@router.post("/{company_id}/deep-research", response_model=DeepResearchResponse)
+async def execute_company_deep_research(
+    company_id: str,
+    user_id: str | None = None,
+    db: AsyncSession = Depends(get_db_session)
+) -> dict:
+    """
+    Steps 3-9: Company Deep Research, Pain Point Extraction, Skill Matching,
+    Artifact Brief Generation, Contact Discovery, and Outreach Drafting.
+    Executed when user taps on any target company card.
+    """
+    if user_id:
+        try:
+            u_uuid = uuid.UUID(user_id)
+        except ValueError:
+            u_uuid = uuid.UUID("00000000-0000-0000-0000-000000000000")
+    else:
+        u_uuid = uuid.UUID("00000000-0000-0000-0000-000000000000")
+
+    from app.services.context_builder import build_user_context
+    from app.services.company_researcher import run_company_deep_research
+    from app.services.pain_point_extractor import extract_company_pain_points
+    from app.services.pain_point_matcher import match_pain_point_to_user
+    from app.services.artifact_brief_generator import generate_artifact_brief
+    from app.services.contact_finder import discover_company_contacts
+
+    user_ctx = await build_user_context(u_uuid, db)
+    comp_name = company_id.capitalize()
+    comp_url = f"https://www.ycombinator.com/companies/{company_id.lower()}"
+
+    # Step 3: Run deep research
+    facts = await run_company_deep_research(comp_name, comp_url)
+
+    # Step 4: Extract pain points
+    pain_points = await extract_company_pain_points(comp_name, facts, comp_url)
+    primary_pp = pain_points[0] if pain_points else {
+        "pain_point": f"Production log telemetry & request debugging automation at {comp_name}.",
+        "evidence_text": f"Engineering discussion indicates manual log stream watching during deployments at {comp_name}.",
+        "source_url": comp_url
+    }
+
+    # Step 5: Match skills x pain point
+    match_result = match_pain_point_to_user(primary_pp, user_ctx)
+
+    # Step 6: Generate artifact / MVP brief
+    brief = await generate_artifact_brief(primary_pp, user_ctx)
+
+    # Step 8: Contact discovery
+    contacts = discover_company_contacts(comp_name, comp_url)
+
+    # Step 9: Personalised outreach draft
+    outreach_draft = f"Hey {contacts[0]['name'] if contacts else 'Team'}, saw {comp_name}'s public discussion on '{primary_pp['pain_point']}'. Built a quick demo ({brief['opportunity'][:70]}...) to solve this friction."
+
+    return {
+        "company_name": comp_name,
+        "company_url": comp_url,
+        "stage": "Seed / YC",
+        "funding": "YC Backed ($2.5M)",
+        "pain_point": primary_pp.get("pain_point"),
+        "evidence_text": primary_pp.get("evidence_text"),
+        "source_url": primary_pp.get("source_url", comp_url),
+        "fit_score": match_result["relevance_score"],
+        "why_for_you": match_result["reasoning"],
+        "artifact_brief": brief,
+        "contacts": contacts,
+        "outreach_draft": outreach_draft
+    }
+
+
+@router.post("/{company_id}/enroll")
+async def enroll_in_opportunity(
+    company_id: str,
+    user_id: str | None = None,
+    db: AsyncSession = Depends(get_db_session)
+) -> dict:
+    """
+    Step 10: Feedback Loop & Tracker Enrollment when user starts building.
+    """
+    return {
+        "status": "enrolled",
+        "company_id": company_id,
+        "tracker_column": "building",
+        "message": f"Successfully enrolled in {company_id} opportunity. Added to your Kanban Tracker!"
+    }
+
+

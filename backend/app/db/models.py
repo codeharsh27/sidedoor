@@ -899,3 +899,135 @@ class UserCompanyMatch(Base):
     __table_args__ = (
         UniqueConstraint("user_id", "company_id", name="uq_user_company_match"),
     )
+
+
+class CompanyFact(Base):
+    """
+    company_facts table — Step 3 Structured Company Facts.
+    """
+
+    __tablename__ = "company_facts"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    fact_type: Mapped[str] = mapped_column(Text, nullable=False)  # "funding" | "hiring" | "pain_point" | "tech_stack" | "product_gap"
+    fact_text: Mapped[str] = mapped_column(Text, nullable=False)
+    source_url: Mapped[str] = mapped_column(Text, nullable=False)
+    source_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
+    fetched_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        server_default=text("now()"),
+    )
+
+    company: Mapped["Company"] = relationship()
+
+
+class CompanyPainPoint(Base):
+    """
+    company_pain_points table — Step 4 Extracted Pain Points & Gaps.
+    """
+
+    __tablename__ = "company_pain_points"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    pain_point: Mapped[str] = mapped_column(Text, nullable=False)
+    category: Mapped[str] = mapped_column(Text, nullable=False, default="general")
+    evidence_text: Mapped[str] = mapped_column(Text, nullable=False)
+    source_url: Mapped[str] = mapped_column(Text, nullable=False)
+    source_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        server_default=text("now()"),
+    )
+
+    company: Mapped["Company"] = relationship()
+
+
+class CompanyContact(Base):
+    """
+    company_contacts table — Step 8 Founder & Contact Discovery.
+    """
+
+    __tablename__ = "company_contacts"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    role: Mapped[str] = mapped_column(Text, nullable=False)
+    linkedin_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_url: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        server_default=text("now()"),
+    )
+
+    company: Mapped["Company"] = relationship()
+
+
+class OutreachOutcome(Base):
+    """
+    outreach_outcomes table — Step 10 Workflow Feedback Loop & Tracker.
+    """
+
+    __tablename__ = "outreach_outcomes"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    artifact_built: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
+    outreach_sent: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
+    reply_received: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
+    outcome_date: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        server_default=text("now()"),
+    )
+
+    company: Mapped["Company"] = relationship()
+
