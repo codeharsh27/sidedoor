@@ -34,10 +34,13 @@ from app.services.document_extractor import (
 )
 from app.services.embedder import get_embedder
 from app.services.resume_parser import (
+    FallbackResumeParser,
     GeminiResumeParser,
     NotableProject,
+    OpenRouterResumeParser,
     ProfileData,
     ResumeParseError,
+    ResumeParserProtocol,
 )
 from app.services.security import (
     InvalidURLError,
@@ -90,14 +93,22 @@ class ProfileParseURLRequest(BaseModel):
 # ---------- Parser dependency ----------
 
 
-def get_resume_parser() -> GeminiResumeParser:
-    """FastAPI dependency that provides the resume parser."""
-    if not settings.gemini_api_key:
+def get_resume_parser() -> ResumeParserProtocol:
+    """FastAPI dependency that provides resilient resume parsing (Gemini with OpenRouter fallback)."""
+    gemini_parser = GeminiResumeParser(api_key=settings.gemini_api_key) if settings.gemini_api_key else None
+    openrouter_parser = OpenRouterResumeParser(api_key=settings.openrouter_api_key) if settings.openrouter_api_key else None
+
+    if gemini_parser and openrouter_parser:
+        return FallbackResumeParser(primary=gemini_parser, fallback=openrouter_parser)
+    elif gemini_parser:
+        return gemini_parser
+    elif openrouter_parser:
+        return openrouter_parser
+    else:
         raise HTTPException(
             status_code=503,
-            detail="Resume parsing is not configured: missing GEMINI_API_KEY.",
+            detail="Resume parsing is not configured: missing GEMINI_API_KEY or OPENROUTER_API_KEY.",
         )
-    return GeminiResumeParser(api_key=settings.gemini_api_key)
 
 
 # ---------- Shared pipeline logic ----------
@@ -129,7 +140,7 @@ async def _run_parse_pipeline(
     extraction: ExtractionResult,
     user_id: uuid.UUID,
     session: AsyncSession,
-    parser: GeminiResumeParser,
+    parser: ResumeParserProtocol,
 ) -> ProfileParseResponse:
     """
     Core pipeline: extracted text → LLM parse → embed → upsert profile.
@@ -222,7 +233,7 @@ async def parse_resume_file(
     user_id: str = Form(...),
     file: UploadFile = File(...),
     session: AsyncSession = Depends(get_db_session),
-    parser: GeminiResumeParser = Depends(get_resume_parser),
+    parser: ResumeParserProtocol = Depends(get_resume_parser),
 ) -> ProfileParseResponse:
     """
     Parse a resume file upload (PDF or DOCX).
@@ -253,7 +264,7 @@ async def parse_resume_file(
 async def parse_resume_text(
     request: ProfileParseTextRequest,
     session: AsyncSession = Depends(get_db_session),
-    parser: GeminiResumeParser = Depends(get_resume_parser),
+    parser: ResumeParserProtocol = Depends(get_resume_parser),
 ) -> ProfileParseResponse:
     """
     Parse raw resume text (pasted directly).
@@ -275,7 +286,7 @@ async def parse_resume_text(
 async def parse_portfolio_url(
     request: ProfileParseURLRequest,
     session: AsyncSession = Depends(get_db_session),
-    parser: GeminiResumeParser = Depends(get_resume_parser),
+    parser: ResumeParserProtocol = Depends(get_resume_parser),
 ) -> ProfileParseResponse:
     """
     Parse a portfolio URL (GitHub profile, personal site, etc.).

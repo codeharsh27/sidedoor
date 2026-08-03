@@ -168,3 +168,81 @@ class GeminiResumeParser:
             raise ResumeParseError(
                 f"Failed to parse resume via Gemini: {e}"
             ) from e
+
+
+class OpenRouterResumeParser:
+    """
+    Resume parser using OpenRouter API (OpenAI-compatible format).
+    Acts as a fallback or primary provider when OpenRouter key is provided.
+    """
+
+    def __init__(self, api_key: str, model_name: str = "google/gemini-2.0-flash-001"):
+        import httpx
+        self._httpx = httpx
+        self._api_key = api_key
+        self._model_name = model_name
+
+    async def parse_resume(self, raw_text: str) -> ProfileData:
+        if not raw_text or not raw_text.strip():
+            raise ResumeParseError("Cannot parse an empty resume.")
+
+        schema_json = json.dumps(ProfileData.model_json_schema(), indent=2)
+        prompt = RESUME_PARSE_PROMPT.format(
+            schema=schema_json,
+            resume_text=raw_text[:15000],
+        )
+
+        headers = {
+            "Authorization": f"Bearer {self._api_key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://sidedoor.app",
+            "X-Title": "SideDoor Resume Parser",
+        }
+        payload = {
+            "model": self._model_name,
+            "messages": [
+                {"role": "user", "content": prompt}
+            ],
+            "response_format": {"type": "json_object"},
+            "temperature": 0.1,
+        }
+
+        try:
+            async with self._httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload)
+                resp.raise_for_status()
+                data = resp.json()
+                content = data["choices"][0]["message"]["content"]
+                parsed = ProfileData.model_validate_json(content)
+                logger.info(
+                    "Parsed resume via OpenRouter: %d skills, %d domains, %d projects",
+                    len(parsed.skills),
+                    len(parsed.domains),
+                    len(parsed.notable_projects),
+                )
+                return parsed
+        except Exception as e:
+            raise ResumeParseError(f"Failed to parse resume via OpenRouter: {e}") from e
+
+
+class FallbackResumeParser:
+    """
+    Resilient parser wrapper: tries primary provider first, automatically
+    falls back to secondary provider if primary fails or hits rate limits.
+    """
+
+    def __init__(self, primary: ResumeParserProtocol, fallback: ResumeParserProtocol | None = None):
+        self.primary = primary
+        self.fallback = fallback
+
+    async def parse_resume(self, raw_text: str) -> ProfileData:
+        try:
+            return await self.primary.parse_resume(raw_text)
+        except Exception as primary_error:
+            if self.fallback:
+                logger.warning(
+                    "Primary resume parser failed (%s). Retrying with fallback parser...",
+                    primary_error,
+                )
+                return await self.fallback.parse_resume(raw_text)
+            raise primary_error
