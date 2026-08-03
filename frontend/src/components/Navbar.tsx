@@ -1,5 +1,4 @@
-import React, { useState } from 'react';
-import { Search } from 'lucide-react';
+import React from 'react';
 
 interface NavbarProps {
   onOpenDashboard?: () => void;
@@ -8,15 +7,6 @@ interface NavbarProps {
 }
 
 export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
-  const [mobileSearch, setMobileSearch] = useState('');
-
-  const handleMobileSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (mobileSearch.trim()) {
-      setActiveTab('dashboard');
-    }
-  };
-
   return (
     <header style={{
       position: 'sticky',
