@@ -1,95 +1,15 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { ArrowRight, Search, ChevronDown, Check, TrendingUp, Layers } from 'lucide-react';
+import React from 'react';
+import { ArrowRight, TrendingUp, Layers } from 'lucide-react';
 
 interface HeroSectionProps {
   onSearchCompany?: (companyQuery: string) => void;
   onStartResearch?: (company: string, role: string) => void;
 }
 
-const TYPEWRITER_URLS = [
-  'https://linear.app',
-  'https://stripe.com',
-  'https://vercel.com',
-  'https://supabase.com',
-  'https://posthog.com',
-  'https://anthropic.ai',
-  'https://cursor.com',
-  'https://sarvam.in'
-];
-
-const ROLES_LIST = [
-  'Product Engineer',
-  'Full Stack Engineer',
-  'Backend / Systems Engineer',
-  'Frontend Engineer',
-  'DevOps / Infrastructure',
-  'AI / ML Engineer'
-];
-
 export const HeroSection: React.FC<HeroSectionProps> = ({ onSearchCompany, onStartResearch }) => {
-  const [companyInput, setCompanyInput] = useState('');
-  const [roleInput, setRoleInput] = useState('Product Engineer');
-  const [isHovered, setIsHovered] = useState(false);
-  const [isRoleMenuOpen, setIsRoleMenuOpen] = useState(false);
-  const roleMenuRef = useRef<HTMLDivElement>(null);
-
-  // Typewriter effect state for placeholder
-  const [placeholderText, setPlaceholderText] = useState('');
-  const [urlIndex, setUrlIndex] = useState(0);
-  const [charIndex, setCharIndex] = useState(0);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [isPaused, setIsPaused] = useState(false);
-
-  // Close custom role menu on outside click
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (roleMenuRef.current && !roleMenuRef.current.contains(event.target as Node)) {
-        setIsRoleMenuOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  useEffect(() => {
-    if (isPaused) {
-      const pauseTimer = setTimeout(() => {
-        setIsPaused(false);
-        setIsDeleting(true);
-      }, 2200);
-      return () => clearTimeout(pauseTimer);
-    }
-
-    const currentUrl = TYPEWRITER_URLS[urlIndex];
-    const speed = isDeleting ? 35 : 70;
-
-    const timer = setTimeout(() => {
-      if (!isDeleting) {
-        if (charIndex < currentUrl.length) {
-          setPlaceholderText(currentUrl.slice(0, charIndex + 1));
-          setCharIndex(charIndex + 1);
-        } else {
-          setIsPaused(true);
-        }
-      } else {
-        if (charIndex > 0) {
-          setPlaceholderText(currentUrl.slice(0, charIndex - 1));
-          setCharIndex(charIndex - 1);
-        } else {
-          setIsDeleting(false);
-          setUrlIndex((prev) => (prev + 1) % TYPEWRITER_URLS.length);
-        }
-      }
-    }, speed);
-
-    return () => clearTimeout(timer);
-  }, [charIndex, isDeleting, isPaused, urlIndex]);
-
-  const handleProceed = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!companyInput.trim()) return;
-    if (onStartResearch) onStartResearch(companyInput.trim(), roleInput.trim());
-    if (onSearchCompany) onSearchCompany(companyInput.trim());
+  const handleStart = () => {
+    if (onStartResearch) onStartResearch('', '');
+    if (onSearchCompany) onSearchCompany('');
   };
 
   return (
@@ -148,28 +68,19 @@ export const HeroSection: React.FC<HeroSectionProps> = ({ onSearchCompany, onSta
             fontSize: '1.14rem', 
             color: 'var(--text-muted)', 
             lineHeight: 1.52, 
-            marginBottom: '32px', 
+            marginBottom: '36px', 
             maxWidth: '620px' 
           }}>
             Resumes don't get you hired—real value does. Uncover actual engineering gaps at target startups, build proof of work, and drive with value first, not another ignored resume.
           </p>
 
-          {/* Mobile Only: Centered Launch Dashboard Button */}
-          <div className="mobile-only" style={{ display: 'none', justifyContent: 'center', marginBottom: '32px' }}>
+          {/* Call to Action Button */}
+          <div style={{ marginBottom: '32px' }}>
             <button 
-              onClick={() => {
-                if (onStartResearch) onStartResearch('', '');
-                // Note: The parent component routing actually uses window.location or navigate, 
-                // but since HeroSection doesn't have navigate, and onStartResearch triggers the flow,
-                // we'll simulate the dashboard click by firing a generic empty search or we can just trigger a click on the navbar dashboard button.
-                // Wait, HeroSection has no direct access to setActiveTab from Navbar.
-                // Best is to call onSearchCompany with a default, or trigger a custom event.
-                // Actually, since this is just a link to the dashboard, we can just use window.location.href = '/dashboard'.
-                window.location.href = '/dashboard';
-              }}
+              onClick={handleStart}
               style={{ 
-                padding: '12px 28px', 
-                fontSize: '1rem',
+                padding: '14px 32px', 
+                fontSize: '1.05rem',
                 fontWeight: 600,
                 borderRadius: '12px',
                 backgroundColor: '#1e2316',
@@ -179,166 +90,23 @@ export const HeroSection: React.FC<HeroSectionProps> = ({ onSearchCompany, onSta
                 boxShadow: '0 4px 14px rgba(0,0,0,0.15)',
                 display: 'inline-flex',
                 alignItems: 'center',
-                gap: '8px'
+                gap: '10px',
+                transition: 'all 0.2s ease'
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.backgroundColor = '#29301f';
+                e.currentTarget.style.transform = 'translateY(-2px)';
+                e.currentTarget.style.boxShadow = '0 6px 20px rgba(0,0,0,0.2)';
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.backgroundColor = '#1e2316';
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = '0 4px 14px rgba(0,0,0,0.15)';
               }}
             >
-              <span>Launch Dashboard</span>
+              <span>Start Scouting Opportunities</span>
               <ArrowRight size={18} />
             </button>
-          </div>
-          {/* Minimalistic Search Box with Custom Pale Yellow Role Dropdown Menu */}
-          <div className="hide-on-mobile" style={{ marginBottom: '24px', maxWidth: '660px', position: 'relative' }}>
-            <form onSubmit={handleProceed}>
-              <div className="paper-card" style={{ 
-                padding: '8px 8px 8px 18px', 
-                display: 'flex', 
-                flexWrap: 'wrap',
-                alignItems: 'center', 
-                gap: '12px',
-                border: isHovered ? '1px solid var(--accent-gold)' : '1px solid var(--border)',
-                backgroundColor: 'var(--paper)',
-                boxShadow: isHovered 
-                  ? '0 20px 48px rgba(152, 118, 26, 0.16), 0 4px 12px rgba(42, 46, 28, 0.05)' 
-                  : '0 12px 36px rgba(42, 46, 28, 0.08)',
-                borderRadius: '12px',
-                transition: 'all 0.2s ease',
-                position: 'relative'
-              }}
-              onMouseEnter={() => setIsHovered(true)}
-              onMouseLeave={() => setIsHovered(false)}
-              >
-                <div className="mobile-w-full" style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
-                  <Search size={20} color="var(--accent-gold)" style={{ flexShrink: 0 }} />
-                  
-                  <input 
-                    type="text"
-                    value={companyInput}
-                    onChange={(e) => setCompanyInput(e.target.value)}
-                    placeholder={placeholderText || 'https://...'}
-                    className="font-serif"
-                    style={{ 
-                      flex: 1, 
-                      background: 'transparent', 
-                      border: 'none', 
-                      outline: 'none', 
-                      fontSize: '1.15rem', 
-                      color: 'var(--ink)',
-                      fontWeight: 500,
-                      minWidth: '150px'
-                    }}
-                    required
-                  />
-                </div>
-
-                {/* Custom Pale Yellow / Cream Role Selection Menu Trigger */}
-                <div ref={roleMenuRef} className="mobile-w-full" style={{ position: 'relative' }}>
-                  <button
-                    type="button"
-                    onClick={() => setIsRoleMenuOpen(!isRoleMenuOpen)}
-                    className="font-sans mobile-w-full"
-                    style={{ 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      justifyContent: 'space-between',
-                      gap: '6px',
-                      backgroundColor: '#f4ead1', 
-                      border: '1px solid rgba(152, 118, 26, 0.35)', 
-                      borderRadius: '8px',
-                      padding: '6px 12px',
-                      fontSize: '0.86rem', 
-                      color: '#7a5a10',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      transition: 'all 0.15s ease',
-                      whiteSpace: 'nowrap'
-                    }}
-                  >
-                    <span>{roleInput}</span>
-                    <ChevronDown size={14} style={{ transform: isRoleMenuOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.15s ease' }} />
-                  </button>
-
-                  {/* Custom Floating Role Dropdown Menu matching Pale Yellow Theme */}
-                  {isRoleMenuOpen && (
-                    <div style={{
-                      position: 'absolute',
-                      top: 'calc(100% + 8px)',
-                      right: 0,
-                      width: '240px',
-                      backgroundColor: '#f4ead1',
-                      border: '1px solid rgba(152, 118, 26, 0.35)',
-                      borderRadius: '12px',
-                      padding: '6px',
-                      boxShadow: '0 16px 40px rgba(42, 46, 28, 0.22), 0 4px 12px rgba(152, 118, 26, 0.12)',
-                      zIndex: 100,
-                      animation: 'fadeIn 0.15s ease-out'
-                    }}>
-                      <div className="font-mono" style={{ fontSize: '0.64rem', color: '#98761a', textTransform: 'uppercase', letterSpacing: '0.06em', padding: '6px 10px 4px', fontWeight: 600 }}>
-                        Select Target Role
-                      </div>
-                      {ROLES_LIST.map((role) => (
-                        <div
-                          key={role}
-                          onClick={() => {
-                            setRoleInput(role);
-                            setIsRoleMenuOpen(false);
-                          }}
-                          className="font-sans"
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            padding: '8px 10px',
-                            borderRadius: '8px',
-                            fontSize: '0.86rem',
-                            fontWeight: role === roleInput ? 600 : 500,
-                            color: role === roleInput ? '#5a420b' : '#7a5a10',
-                            backgroundColor: role === roleInput ? 'rgba(152, 118, 26, 0.15)' : 'transparent',
-                            cursor: 'pointer',
-                            transition: 'all 0.15s ease'
-                          }}
-                          onMouseEnter={(e) => {
-                            if (role !== roleInput) e.currentTarget.style.backgroundColor = 'rgba(152, 118, 26, 0.1)';
-                          }}
-                          onMouseLeave={(e) => {
-                            if (role !== roleInput) e.currentTarget.style.backgroundColor = 'transparent';
-                          }}
-                        >
-                          <span>{role}</span>
-                          {role === roleInput && <Check size={14} color="#5a420b" />}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <button 
-                  type="submit" 
-                  className="mobile-w-full"
-                  style={{ 
-                    padding: '11px 24px', 
-                    fontSize: '0.92rem', 
-                    fontWeight: 600,
-                    whiteSpace: 'nowrap', 
-                    borderRadius: '8px', 
-                    backgroundColor: '#1e2316', 
-                    color: '#e2d5b6',
-                    border: 'none',
-                    cursor: 'pointer',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '8px',
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
-                    transition: 'all 0.15s ease'
-                  }}
-                  onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#29301f'}
-                  onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#1e2316'}
-                >
-                  <span>Scout Opportunities</span>
-                  <ArrowRight size={16} />
-                </button>
-              </div>
-            </form>
           </div>
 
           {/* Clean, Decluttered 1-Line Quick Scout Pills & Preserved Ecosystems Bar */}
@@ -358,11 +126,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({ onSearchCompany, onSta
                 <button
                   key={comp.name}
                   type="button"
-                  onClick={() => {
-                    setCompanyInput(comp.url);
-                    if (onStartResearch) onStartResearch(comp.name, roleInput);
-                    if (onSearchCompany) onSearchCompany(comp.name);
-                  }}
+                  onClick={handleStart}
                   className="font-sans"
                   style={{
                     padding: '3px 9px',
