@@ -23,10 +23,11 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan: startup and shutdown logic."""
-    # Startup: pre-load the embedding model so the first request isn't slow
-    logger.info("Loading embedding model on startup...")
-    get_embedder(settings.embedding_model)
-    logger.info("Embedding model ready.")
+    # We deliberately DO NOT pre-load the embedding model here because 
+    # PyTorch + SentenceTransformers uses ~400MB RAM, which can cause
+    # an Out-Of-Memory (OOM) kill on Render's 512MB Free Tier during startup.
+    # It will load lazily on the first request instead.
+    logger.info("Application starting up (ML models will load lazily).")
 
     yield
 
