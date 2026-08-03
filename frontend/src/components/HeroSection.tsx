@@ -173,35 +173,39 @@ export const HeroSection: React.FC<HeroSectionProps> = ({ onSearchCompany, onSta
               onMouseEnter={() => setIsHovered(true)}
               onMouseLeave={() => setIsHovered(false)}
               >
-                <Search size={20} color="var(--accent-gold)" style={{ flexShrink: 0 }} />
-                
-                <input 
-                  type="text"
-                  value={companyInput}
-                  onChange={(e) => setCompanyInput(e.target.value)}
-                  placeholder={placeholderText || 'https://...'}
-                  className="font-serif"
-                  style={{ 
-                    flex: 1, 
-                    background: 'transparent', 
-                    border: 'none', 
-                    outline: 'none', 
-                    fontSize: '1.15rem', 
-                    color: 'var(--ink)',
-                    fontWeight: 500
-                  }}
-                  required
-                />
+                <div className="mobile-w-full" style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
+                  <Search size={20} color="var(--accent-gold)" style={{ flexShrink: 0 }} />
+                  
+                  <input 
+                    type="text"
+                    value={companyInput}
+                    onChange={(e) => setCompanyInput(e.target.value)}
+                    placeholder={placeholderText || 'https://...'}
+                    className="font-serif"
+                    style={{ 
+                      flex: 1, 
+                      background: 'transparent', 
+                      border: 'none', 
+                      outline: 'none', 
+                      fontSize: '1.15rem', 
+                      color: 'var(--ink)',
+                      fontWeight: 500,
+                      minWidth: '150px'
+                    }}
+                    required
+                  />
+                </div>
 
                 {/* Custom Pale Yellow / Cream Role Selection Menu Trigger */}
-                <div ref={roleMenuRef} style={{ position: 'relative' }}>
+                <div ref={roleMenuRef} className="mobile-w-full" style={{ position: 'relative' }}>
                   <button
                     type="button"
                     onClick={() => setIsRoleMenuOpen(!isRoleMenuOpen)}
-                    className="font-sans"
+                    className="font-sans mobile-w-full"
                     style={{ 
                       display: 'flex', 
                       alignItems: 'center', 
+                      justifyContent: 'space-between',
                       gap: '6px',
                       backgroundColor: '#f4ead1', 
                       border: '1px solid rgba(152, 118, 26, 0.35)', 
@@ -275,6 +279,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({ onSearchCompany, onSta
 
                 <button 
                   type="submit" 
+                  className="mobile-w-full"
                   style={{ 
                     padding: '11px 24px', 
                     fontSize: '0.92rem', 
@@ -287,6 +292,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({ onSearchCompany, onSta
                     cursor: 'pointer',
                     display: 'inline-flex',
                     alignItems: 'center',
+                    justifyContent: 'center',
                     gap: '8px',
                     boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
                     transition: 'all 0.15s ease'

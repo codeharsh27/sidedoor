@@ -55,6 +55,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
         <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }} className="font-sans mobile-gap-4">
           <button 
             onClick={() => setActiveTab('landing')}
+            className="hide-on-mobile"
             style={{ 
               color: activeTab === 'landing' ? 'var(--ink)' : 'var(--text-muted)', 
               fontWeight: 500, 
