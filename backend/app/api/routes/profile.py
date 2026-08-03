@@ -228,6 +228,49 @@ async def _run_parse_pipeline(
 # ---------- Endpoints ----------
 
 
+@router.post("/parse-resume", response_model=ProfileParseResponse)
+async def parse_resume_preview(
+    file: UploadFile = File(None),
+    raw_text: str = Form(None),
+    parser: ResumeParserProtocol = Depends(get_resume_parser),
+) -> ProfileParseResponse:
+    """
+    Parse a resume for onboarding preview without embedding or saving to the database.
+    Accepts either a file upload or raw_text form data.
+    """
+    if file:
+        file_bytes = await file.read()
+        try:
+            extraction = extract_from_file(
+                file_bytes=file_bytes,
+                content_type=file.content_type,
+                filename=file.filename,
+            )
+        except DocumentExtractionError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+    elif raw_text:
+        try:
+            extraction = extract_from_text(raw_text)
+        except DocumentExtractionError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+    else:
+        raise HTTPException(status_code=400, detail="Provide a file or raw_text")
+        
+    try:
+        parsed: ProfileData = await parser.parse_resume(extraction.raw_text)
+    except ResumeParseError as e:
+        raise HTTPException(status_code=422, detail=f"Resume parsing failed: {e}")
+        
+    return ProfileParseResponse(
+        user_id="preview",
+        skills=parsed.skills,
+        domains=parsed.domains,
+        project_summary=parsed.project_summary,
+        notable_projects=[NotableProjectResponse(**p.model_dump()) for p in parsed.notable_projects],
+        source_type=extraction.source_type,
+    )
+
+
 @router.post("/parse", response_model=ProfileParseResponse)
 async def parse_resume_file(
     user_id: str = Form(...),
