@@ -1013,7 +1013,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ userProfile, supab
 
     const interval = setInterval(() => {
       setCookingStepIndex(prev => (prev < 4 ? prev + 1 : prev));
-    }, 650);
+    }, 1600);
 
     return () => clearInterval(interval);
   }, [isDeepResearching]);
@@ -3399,18 +3399,18 @@ Arjun is building a 4-hour MVP to showcase his skills to ${item.company.name}.
               </div>
             </div>
 
-            {/* Gen-Z Dynamic "Something is Cooking" Loading View */}
+            {/* AI Analytical Loading View */}
             {isDeepResearching ? (
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '24px', padding: '40px 32px', backgroundColor: 'var(--paper)' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', textAlign: 'center' }}>
-                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '6px 16px', borderRadius: '24px', backgroundColor: 'rgba(217, 119, 87, 0.1)', border: '1px solid rgba(217, 119, 87, 0.25)', color: '#d97757', fontWeight: 700, fontSize: '0.85rem' }} className="font-mono pulse-cooking">
-                    <span>🔥 Something is cooking for you...</span>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '6px 16px', borderRadius: '24px', backgroundColor: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.25)', color: '#2563eb', fontWeight: 600, fontSize: '0.85rem' }} className="font-mono pulse-cooking">
+                    <span>Deep Research Active</span>
                   </div>
                   <h3 className="font-serif" style={{ fontSize: '1.75rem', color: 'var(--ink)', margin: 0, fontWeight: 700 }}>
-                    Deep Researching Target Company
+                    Synthesizing Target Company
                   </h3>
                   <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-muted)', maxWidth: '460px', lineHeight: 1.5 }}>
-                    Scanning live public community receipts and tailoring your 4-hour MVP build blueprint in real time.
+                    Scanning live public communities, extracting data telemetry, and compiling MVP blueprints.
                   </p>
                 </div>
 
@@ -3421,19 +3421,20 @@ Arjun is building a 4-hour MVP to showcase his skills to ${item.company.name}.
                     style={{ 
                       height: '100%', 
                       width: `${Math.min(100, Math.max(15, (cookingStepIndex + 1) * 20))}%`, 
-                      transition: 'width 0.4s ease' 
+                      transition: 'width 0.4s ease',
+                      backgroundColor: '#2563eb'
                     }} 
                   />
                 </div>
 
-                {/* Animated Gen-Z Pipeline Stages */}
+                {/* Animated AI Pipeline Stages */}
                 <div style={{ width: '100%', maxWidth: '500px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   {[
-                    { text: "Baking high-signal customer friction & telemetry gaps...", icon: "⚡" },
-                    { text: "Parsing Reddit, GitHub & Twitter community receipts...", icon: "🧾" },
-                    { text: "Cooking 4-hour MVP build blueprints for your stack...", icon: "👨‍🍳" },
-                    { text: "Matching your dev vibe with CTO engineering priorities...", icon: "🤌" },
-                    { text: "Serving hot buildable opportunities...", icon: "🚀" }
+                    { text: "Extracting high-signal customer friction and telemetry gaps...", icon: "•" },
+                    { text: "Parsing GitHub, Reddit & community telemetry...", icon: "•" },
+                    { text: "Synthesizing 4-hour MVP build blueprints...", icon: "•" },
+                    { text: "Aligning engineering priorities with technical stack...", icon: "•" },
+                    { text: "Finalizing buildable opportunities...", icon: "•" }
                   ].map((phrase, idx) => {
                     const isDone = idx < cookingStepIndex;
                     const isCurrent = idx === cookingStepIndex;
@@ -3448,8 +3449,8 @@ Arjun is building a 4-hour MVP to showcase his skills to ${item.company.name}.
                           justifyContent: 'space-between',
                           padding: '12px 16px',
                           borderRadius: '10px',
-                          backgroundColor: isCurrent ? 'var(--cream)' : (isDone ? 'var(--surface)' : 'var(--paper)'),
-                          border: `1px solid ${isCurrent ? 'var(--accent-gold)' : (isDone ? 'var(--border-light)' : 'var(--paper-edge)')}`,
+                          backgroundColor: isCurrent ? '#eff6ff' : (isDone ? 'var(--surface)' : 'var(--paper)'),
+                          border: `1px solid ${isCurrent ? '#60a5fa' : (isDone ? 'var(--border-light)' : 'var(--paper-edge)')}`,
                           opacity: isPending ? 0.4 : 1,
                           transition: 'all 0.3s ease'
                         }}
@@ -3483,7 +3484,7 @@ Arjun is building a 4-hour MVP to showcase his skills to ${item.company.name}.
               </div>
             ) : deepResearchResult && (
               /* Deep Research Content View */
-              <div style={{ flex: 1, overflowY: 'auto', padding: '28px 32px', display: 'flex', flexDirection: 'column', gap: '22px' }}>
+              <div className="fade-in-up" style={{ flex: 1, overflowY: 'auto', padding: '28px 32px', display: 'flex', flexDirection: 'column', gap: '22px' }}>
                 
                 {/* Notification Toasts */}
                 {enrollSuccessMessage && (
