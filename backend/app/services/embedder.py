@@ -13,7 +13,7 @@ This same embedder is used by:
 import logging
 from functools import lru_cache
 
-from sentence_transformers import SentenceTransformer
+
 
 from app.services.resume_parser import ProfileData
 
