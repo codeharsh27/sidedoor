@@ -152,8 +152,42 @@ export const HeroSection: React.FC<HeroSectionProps> = ({ onSearchCompany, onSta
             maxWidth: '620px' 
           }}>
             Resumes don't get you hired—real value does. Uncover actual engineering gaps at target startups, build proof of work, and drive with value first, not another ignored resume.
-          </p>          {/* Minimalistic Search Box with Custom Pale Yellow Role Dropdown Menu */}
-          <div style={{ marginBottom: '24px', maxWidth: '660px', position: 'relative' }}>
+          </p>
+
+          {/* Mobile Only: Centered Launch Dashboard Button */}
+          <div className="mobile-only" style={{ display: 'none', justifyContent: 'center', marginBottom: '32px' }}>
+            <button 
+              onClick={() => {
+                if (onStartResearch) onStartResearch('', '');
+                // Note: The parent component routing actually uses window.location or navigate, 
+                // but since HeroSection doesn't have navigate, and onStartResearch triggers the flow,
+                // we'll simulate the dashboard click by firing a generic empty search or we can just trigger a click on the navbar dashboard button.
+                // Wait, HeroSection has no direct access to setActiveTab from Navbar.
+                // Best is to call onSearchCompany with a default, or trigger a custom event.
+                // Actually, since this is just a link to the dashboard, we can just use window.location.href = '/dashboard'.
+                window.location.href = '/dashboard';
+              }}
+              style={{ 
+                padding: '12px 28px', 
+                fontSize: '1rem',
+                fontWeight: 600,
+                borderRadius: '12px',
+                backgroundColor: '#1e2316',
+                color: '#e2d5b6',
+                border: 'none',
+                cursor: 'pointer',
+                boxShadow: '0 4px 14px rgba(0,0,0,0.15)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}
+            >
+              <span>Launch Dashboard</span>
+              <ArrowRight size={18} />
+            </button>
+          </div>
+          {/* Minimalistic Search Box with Custom Pale Yellow Role Dropdown Menu */}
+          <div className="hide-on-mobile" style={{ marginBottom: '24px', maxWidth: '660px', position: 'relative' }}>
             <form onSubmit={handleProceed}>
               <div className="paper-card" style={{ 
                 padding: '8px 8px 8px 18px', 

@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { Search } from 'lucide-react';
 
 interface NavbarProps {
   onOpenDashboard?: () => void;
@@ -7,6 +8,15 @@ interface NavbarProps {
 }
 
 export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
+  const [mobileSearch, setMobileSearch] = useState('');
+
+  const handleMobileSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (mobileSearch.trim()) {
+      setActiveTab('dashboard');
+    }
+  };
+
   return (
     <header style={{
       position: 'sticky',
@@ -70,6 +80,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
 
           <button 
             onClick={() => setActiveTab('dashboard')}
+            className="hide-on-mobile"
             style={{ 
               padding: '7px 18px', 
               fontSize: '0.86rem',
@@ -96,6 +107,34 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
           >
             <span>{activeTab === 'dashboard' ? 'Dashboard Active' : 'Launch Dashboard'}</span>
           </button>
+
+          {/* Mobile-Only Search Bar */}
+          <form className="mobile-only" onSubmit={handleMobileSearch} style={{
+            display: 'none', // Overridden by .mobile-only in CSS
+            alignItems: 'center',
+            gap: '8px',
+            backgroundColor: 'rgba(255, 255, 255, 0.6)',
+            border: '1px solid var(--border-light)',
+            padding: '6px 14px',
+            borderRadius: '24px',
+            width: '180px'
+          }}>
+            <Search size={14} color="var(--accent-gold)" style={{ flexShrink: 0 }} />
+            <input 
+              type="text"
+              placeholder="Target company..."
+              value={mobileSearch}
+              onChange={(e) => setMobileSearch(e.target.value)}
+              style={{
+                border: 'none',
+                background: 'transparent',
+                outline: 'none',
+                width: '100%',
+                fontSize: '0.85rem',
+                color: 'var(--ink)'
+              }}
+            />
+          </form>
         </div>
 
       </div>

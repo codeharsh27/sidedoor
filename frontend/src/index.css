@@ -730,6 +730,15 @@ html {
     align-items: center !important;
     gap: 16px !important;
   }
+  .hide-on-mobile {
+    display: none !important;
+  }
+  .mobile-only {
+    display: flex !important;
+  }
+  .mobile-br-16 {
+    border-radius: 16px !important;
+  }
 }
 
 @keyframes fade-in-up {
