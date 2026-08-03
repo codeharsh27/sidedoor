@@ -103,7 +103,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({ onSearchCompany, onSta
       alignItems: 'center'
     }}>
       {/* Restored Original Background Illustration with Seamless Top Blend */}
-      <div style={{
+      <div className="hide-on-mobile" style={{
         position: 'absolute',
         top: '-4%',
         right: 0,
