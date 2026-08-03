@@ -695,6 +695,41 @@ html {
     height: auto !important;
     position: relative !important;
   }
+
+  /* Mobile Layout Overrides */
+  .mobile-stack {
+    flex-direction: column !important;
+  }
+  .mobile-stack-reverse {
+    flex-direction: column-reverse !important;
+  }
+  .mobile-text-center {
+    text-align: center !important;
+    align-items: center !important;
+  }
+  .mobile-hide {
+    display: none !important;
+  }
+  .mobile-p-4 {
+    padding: 16px !important;
+  }
+  .mobile-w-full {
+    width: 100% !important;
+  }
+  .mobile-pt-safe {
+    padding-top: 32px !important;
+  }
+  .mobile-gap-4 {
+    gap: 16px !important;
+  }
+  .mobile-gap-8 {
+    gap: 32px !important;
+  }
+  .mobile-header-stack {
+    flex-direction: column !important;
+    align-items: center !important;
+    gap: 16px !important;
+  }
 }
 
 @keyframes fade-in-up {

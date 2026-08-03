@@ -41,7 +41,7 @@ export const Footer: React.FC = () => {
         pointerEvents: 'none'
       }} />
 
-      <div className="container" style={{ position: 'relative', zIndex: 10, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '64px' }}>
+      <div className="container mobile-p-4" style={{ position: 'relative', zIndex: 10, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '64px' }}>
         
         {/* Top Horizontal Navigation Row (Centered on Light Cream Upper Section) */}
         <nav className="font-sans" style={{ 

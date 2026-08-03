@@ -4,7 +4,7 @@ import { ShieldCheck, Zap, Users } from 'lucide-react';
 export const WorkflowSection: React.FC = () => {
   return (
     <section style={{ padding: '80px 0', backgroundColor: 'var(--bg)', borderBottom: '1px solid var(--border-light)' }}>
-      <div className="container" style={{ maxWidth: '1040px' }}>
+      <div className="container mobile-p-4" style={{ maxWidth: '1040px' }}>
         
         {/* Editorial Section Header */}
         <div style={{ textAlign: 'center', maxWidth: '760px', margin: '0 auto 60px' }}>
@@ -22,7 +22,7 @@ export const WorkflowSection: React.FC = () => {
         </div>
 
         {/* 3 Pillars (Code Almanac Grid) */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '24px' }}>
           
           {/* Pillar 1 */}
           <div className="paper-card font-sans" style={{ padding: '32px 28px', display: 'flex', flexDirection: 'column', gap: '16px' }}>

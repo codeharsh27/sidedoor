@@ -178,7 +178,7 @@ export const ScanPreviewSection: React.FC<ScanPreviewSectionProps> = ({ onUnlock
         </div>
 
         {/* Dashboard UI Frame (Replicating DashboardView Startup Feed) */}
-        <div className="paper-card" style={{ padding: '28px', backgroundColor: 'var(--paper)', border: '1px solid var(--border-light)', borderRadius: '20px', boxShadow: '0 20px 48px rgba(42, 46, 28, 0.08)' }}>
+        <div className="paper-card mobile-p-4" style={{ padding: '28px', backgroundColor: 'var(--paper)', border: '1px solid var(--border-light)', borderRadius: '20px', boxShadow: '0 20px 48px rgba(42, 46, 28, 0.08)' }}>
           
           {/* Top Banner Bar mirroring the real Dashboard Header */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-light)', paddingBottom: '20px', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
@@ -319,7 +319,7 @@ export const ScanPreviewSection: React.FC<ScanPreviewSectionProps> = ({ onUnlock
           justifyContent: 'center',
           padding: '24px'
         }}>
-          <div className="paper-card animate-modal-scale" style={{
+          <div className="paper-card animate-modal-scale mobile-p-4" style={{
             width: '100%',
             maxWidth: '780px',
             maxHeight: '90vh',
@@ -485,7 +485,7 @@ export const ScanPreviewSection: React.FC<ScanPreviewSectionProps> = ({ onUnlock
             )}
 
             {/* Modal Bottom CTA */}
-            <div style={{ marginTop: '28px', borderTop: '1px solid var(--border-light)', paddingTop: '20px', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+            <div className="mobile-stack" style={{ marginTop: '28px', borderTop: '1px solid var(--border-light)', paddingTop: '20px', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
               <button
                 onClick={() => setSelectedCompany(null)}
                 className="btn-secondary"

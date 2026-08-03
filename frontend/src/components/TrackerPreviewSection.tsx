@@ -8,7 +8,7 @@ interface TrackerPreviewSectionProps {
 export const TrackerPreviewSection: React.FC<TrackerPreviewSectionProps> = ({ onUnlockTracker }) => {
   return (
     <section style={{ padding: '88px 0', backgroundColor: 'var(--surface)', borderBottom: '1px solid var(--border-light)' }}>
-      <div className="container" style={{ maxWidth: '1140px' }}>
+      <div className="container mobile-p-4" style={{ maxWidth: '1140px' }}>
         
         {/* Section Header */}
         <div style={{ textAlign: 'center', maxWidth: '720px', margin: '0 auto 48px' }}>
@@ -26,7 +26,7 @@ export const TrackerPreviewSection: React.FC<TrackerPreviewSectionProps> = ({ on
         </div>
 
         {/* Kanban Board Visual Preview */}
-        <div className="paper-card" style={{ padding: '24px', backgroundColor: 'var(--paper)', border: '1px solid var(--border-light)', borderRadius: '16px' }}>
+        <div className="paper-card mobile-p-4" style={{ padding: '24px', backgroundColor: 'var(--paper)', border: '1px solid var(--border-light)', borderRadius: '16px' }}>
           
           {/* Header Bar */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-light)', paddingBottom: '16px', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>

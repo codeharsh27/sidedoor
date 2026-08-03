@@ -58,7 +58,7 @@ export const BountiesShowcaseSection: React.FC<BountiesShowcaseSectionProps> = (
 
   return (
     <section style={{ padding: '88px 0', backgroundColor: 'var(--bg)', borderBottom: '1px solid var(--border-light)' }}>
-      <div className="container" style={{ maxWidth: '1140px' }}>
+      <div className="container mobile-p-4" style={{ maxWidth: '1140px' }}>
         
         {/* Section Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: '20px', marginBottom: '40px' }}>
@@ -105,11 +105,11 @@ export const BountiesShowcaseSection: React.FC<BountiesShowcaseSectionProps> = (
         </div>
 
         {/* Bounties Grid */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '24px' }}>
           {filteredBounties.map(item => (
             <div 
               key={item.id}
-              className="paper-card"
+              className="paper-card mobile-p-4"
               style={{
                 padding: '28px',
                 display: 'flex',

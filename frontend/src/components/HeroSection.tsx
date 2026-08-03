@@ -158,6 +158,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({ onSearchCompany, onSta
               <div className="paper-card" style={{ 
                 padding: '8px 8px 8px 18px', 
                 display: 'flex', 
+                flexWrap: 'wrap',
                 alignItems: 'center', 
                 gap: '12px',
                 border: isHovered ? '1px solid var(--accent-gold)' : '1px solid var(--border)',

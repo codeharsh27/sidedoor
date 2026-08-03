@@ -19,7 +19,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
       borderBottom: '1px solid var(--border-light)',
       padding: '12px 0'
     }}>
-      <div style={{ 
+      <div className="mobile-p-4" style={{ 
         display: 'flex', 
         alignItems: 'center', 
         justifyContent: 'space-between', 
@@ -52,7 +52,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
         </div>
 
         {/* Navigation Actions (Minimal & Uncluttered) */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }} className="font-sans">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }} className="font-sans mobile-gap-4">
           <button 
             onClick={() => setActiveTab('landing')}
             style={{ 
