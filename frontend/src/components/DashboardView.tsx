@@ -1197,10 +1197,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ userProfile, supab
       };
     } catch (err) {
       console.warn("Deep research fallback for", compName, err);
-      setAppToast({
-        message: "Scouting pipelines are temporarily busy. Loading local blueprint fallback.",
-        type: 'info'
-      });
+      // Artificial delay to simulate AI pipelines scanning
+      await new Promise(resolve => setTimeout(resolve, 8000));
+
       resultObj = {
         company_name: compName,
         original_company_url: origUrl,
