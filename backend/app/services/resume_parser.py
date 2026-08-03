@@ -176,7 +176,7 @@ class OpenRouterResumeParser:
     Acts as a fallback or primary provider when OpenRouter key is provided.
     """
 
-    def __init__(self, api_key: str, model_name: str = "google/gemini-2.0-flash-001"):
+    def __init__(self, api_key: str, model_name: str = "google/gemini-2.5-flash"):
         import httpx
         self._httpx = httpx
         self._api_key = api_key
