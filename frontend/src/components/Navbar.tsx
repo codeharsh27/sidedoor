@@ -1,5 +1,4 @@
 import React from 'react';
-import { Terminal } from 'lucide-react';
 
 interface NavbarProps {
   onOpenDashboard?: () => void;
@@ -13,30 +12,41 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
       position: 'sticky',
       top: 0,
       zIndex: 50,
-      backgroundColor: 'rgba(240, 234, 219, 0.92)',
+      backgroundColor: 'rgba(253, 251, 246, 0.95)',
+      backgroundImage: 'radial-gradient(rgba(152, 118, 26, 0.09) 0.6px, transparent 0.6px)',
+      backgroundSize: '8px 8px',
       backdropFilter: 'blur(16px)',
       borderBottom: '1px solid var(--border-light)',
-      padding: '16px 0'
+      padding: '12px 0'
     }}>
-      <div className="container" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', maxWidth: '1240px' }}>
+      <div style={{ 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'space-between', 
+        width: '100%', 
+        paddingLeft: '40px', 
+        paddingRight: '40px', 
+        boxSizing: 'border-box' 
+      }}>
         
-        {/* Logo (Clean & Simple, Code Almanac Style) */}
+        {/* Logo (Clean & Compact) */}
         <div 
           onClick={() => setActiveTab('landing')}
-          style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer', userSelect: 'none' }}
+          style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', userSelect: 'none' }}
         >
-          <div style={{
-            width: '34px',
-            height: '34px',
-            borderRadius: '6px',
-            background: 'var(--ink)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
+          <img 
+            src="/sidedoor_logo.png" 
+            alt="SideDoor Logo" 
+            style={{ height: '36px', objectFit: 'contain' }} 
+          />
+          <span className="font-serif" style={{ 
+            fontSize: '1.42rem', 
+            fontWeight: 600, 
+            color: 'var(--ink)', 
+            letterSpacing: '-0.02em',
+            lineHeight: 1,
+            transform: 'translateY(2px)'
           }}>
-            <Terminal size={17} color="var(--cream)" />
-          </div>
-          <span className="font-serif" style={{ fontSize: '1.45rem', fontWeight: 500, letterSpacing: '-0.02em', color: 'var(--ink)' }}>
             SideDoor
           </span>
         </div>
@@ -59,14 +69,28 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
 
           <button 
             onClick={() => setActiveTab('dashboard')}
-            className={activeTab === 'dashboard' ? 'btn-primary' : 'btn-secondary'}
             style={{ 
-              padding: '8px 18px', 
-              fontSize: '0.9rem',
+              padding: '7px 18px', 
+              fontSize: '0.86rem',
+              fontWeight: 600,
               borderRadius: '8px',
-              backgroundColor: activeTab === 'dashboard' ? 'var(--ink)' : 'var(--surface)',
-              color: activeTab === 'dashboard' ? 'var(--cream)' : 'var(--ink)',
-              border: '1px solid var(--border)'
+              backgroundColor: '#1e2316',
+              color: '#e2d5b6',
+              border: 'none',
+              cursor: 'pointer',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+              transition: 'all 0.15s ease',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+            onMouseOver={(e) => {
+              e.currentTarget.style.backgroundColor = '#29301f';
+              e.currentTarget.style.transform = 'translateY(-1px)';
+            }}
+            onMouseOut={(e) => {
+              e.currentTarget.style.backgroundColor = '#1e2316';
+              e.currentTarget.style.transform = 'translateY(0)';
             }}
           >
             <span>{activeTab === 'dashboard' ? 'Dashboard Active' : 'Launch Dashboard'}</span>

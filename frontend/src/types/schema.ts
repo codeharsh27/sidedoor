@@ -133,17 +133,29 @@ export interface OnboardingData {
 
 export interface BountyItem {
   id: string;
+  source?: string;
+  type?: string;
   title: string;
-  company_name: string;
-  company_url: string;
-  reward_amount: string;
-  type: 'bounty' | 'hackathon' | 'trial';
-  tech_stack: string[];
-  est_hours: number;
-  platform_source: string;
-  source_url: string;
-  description: string;
-  senior_build_plan: string;
+  description?: string;
+  url?: string;
+  deadline?: string;
+  payout_amount?: string;
+  payout_currency?: string;
+  tags?: string[];
+  location_pref?: string;
+  verified?: boolean;
+  last_confirmed?: string;
+  source_trust?: number;
+  fit_score?: number;
+  fit_reason?: string;
+  company_name?: string;
+  company_url?: string;
+  reward_amount?: string;
+  tech_stack?: string[];
+  est_hours?: number;
+  platform_source?: string;
+  source_url?: string;
+  senior_build_plan?: string;
 }
 
 export interface ExtractedProject {
@@ -202,4 +214,6 @@ export interface FullOnboardingPayload {
   projects: UserProjectItem[];
   preferences: UserPreferencesPayload;
 }
+
+
 

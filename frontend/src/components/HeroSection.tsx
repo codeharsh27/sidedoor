@@ -149,13 +149,11 @@ export const HeroSection: React.FC<HeroSectionProps> = ({ onSearchCompany, onSta
             color: 'var(--text-muted)', 
             lineHeight: 1.52, 
             marginBottom: '32px', 
-            maxWidth: '580px' 
+            maxWidth: '620px' 
           }}>
-            Uncover active engineering challenges at target startups — walk into interviews with evidenced solutions, not just another resume in the queue.
-          </p>
-
-          {/* Minimalistic Search Box with Custom Pale Yellow Role Dropdown Menu */}
-          <div style={{ marginBottom: '36px', maxWidth: '660px', position: 'relative' }}>
+            Resumes don't get you hired—real value does. Uncover actual engineering gaps at target startups, build proof of work, and drive with value first, not another ignored resume.
+          </p>          {/* Minimalistic Search Box with Custom Pale Yellow Role Dropdown Menu */}
+          <div style={{ marginBottom: '24px', maxWidth: '660px', position: 'relative' }}>
             <form onSubmit={handleProceed}>
               <div className="paper-card" style={{ 
                 padding: '8px 8px 8px 18px', 
@@ -257,7 +255,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({ onSearchCompany, onSta
                             color: role === roleInput ? '#5a420b' : '#7a5a10',
                             backgroundColor: role === roleInput ? 'rgba(152, 118, 26, 0.15)' : 'transparent',
                             cursor: 'pointer',
-                            transition: 'all 0.1s ease'
+                            transition: 'all 0.15s ease'
                           }}
                           onMouseEnter={(e) => {
                             if (role !== roleInput) e.currentTarget.style.backgroundColor = 'rgba(152, 118, 26, 0.1)';
@@ -276,54 +274,120 @@ export const HeroSection: React.FC<HeroSectionProps> = ({ onSearchCompany, onSta
 
                 <button 
                   type="submit" 
-                  className="btn-primary" 
-                  style={{ padding: '11px 22px', fontSize: '0.95rem', whiteSpace: 'nowrap', borderRadius: '10px' }}
+                  style={{ 
+                    padding: '11px 24px', 
+                    fontSize: '0.92rem', 
+                    fontWeight: 600,
+                    whiteSpace: 'nowrap', 
+                    borderRadius: '8px', 
+                    backgroundColor: '#1e2316', 
+                    color: '#e2d5b6',
+                    border: 'none',
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
+                    transition: 'all 0.15s ease'
+                  }}
+                  onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#29301f'}
+                  onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#1e2316'}
                 >
-                  <span>Analyze</span>
+                  <span>Scout Opportunities</span>
                   <ArrowRight size={16} />
                 </button>
               </div>
             </form>
           </div>
 
-          {/* Clean Static Editorial Startup Ecosystems (Not clickable, removed AI/ML Labs) */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
-            <span className="font-mono" style={{ fontSize: '0.72rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600 }}>
-              EXPLORE ECOSYSTEMS:
-            </span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
-              
-              {/* YC Backed */}
-              <span className="font-sans" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.86rem', fontWeight: 500, color: 'var(--ink)' }}>
-                <span className="font-mono" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '18px', height: '18px', borderRadius: '4px', backgroundColor: '#ff6600', color: '#fff', fontSize: '0.7rem', fontWeight: 700 }}>Y</span>
-                <span>YC Backed Startups</span>
+          {/* Clean, Decluttered 1-Line Quick Scout Pills & Preserved Ecosystems Bar */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            
+            {/* Quick Scout Pills */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <span className="font-mono" style={{ fontSize: '0.7rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600 }}>
+                POPULAR:
               </span>
-
-              <span style={{ color: 'var(--border-light)', fontSize: '0.75rem' }}>•</span>
-
-              {/* a16z Portfolio */}
-              <span className="font-sans" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.86rem', fontWeight: 500, color: 'var(--ink)' }}>
-                <span className="font-mono" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '1px 5px', borderRadius: '4px', backgroundColor: '#2d333a', color: '#ff6c37', fontSize: '0.64rem', fontWeight: 700 }}>a16z</span>
-                <span>a16z Portfolio</span>
-              </span>
-
-              <span style={{ color: 'var(--border-light)', fontSize: '0.75rem' }}>•</span>
-
-              {/* Sequoia Backed */}
-              <span className="font-sans" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.86rem', fontWeight: 500, color: 'var(--ink)' }}>
-                <Layers size={14} color="var(--accent-moss)" />
-                <span>Sequoia Backed</span>
-              </span>
-
-              <span style={{ color: 'var(--border-light)', fontSize: '0.75rem' }}>•</span>
-
-              {/* Series A & B */}
-              <span className="font-sans" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.86rem', fontWeight: 500, color: 'var(--ink)' }}>
-                <TrendingUp size={15} color="var(--accent-gold)" />
-                <span>Series A & B</span>
-              </span>
-
+              {[
+                { name: 'Linear', url: 'https://linear.app' },
+                { name: 'Stripe', url: 'https://stripe.com' },
+                { name: 'PostHog', url: 'https://posthog.com' },
+                { name: 'Vercel', url: 'https://vercel.com' }
+              ].map(comp => (
+                <button
+                  key={comp.name}
+                  type="button"
+                  onClick={() => {
+                    setCompanyInput(comp.url);
+                    if (onStartResearch) onStartResearch(comp.name, roleInput);
+                    if (onSearchCompany) onSearchCompany(comp.name);
+                  }}
+                  className="font-sans"
+                  style={{
+                    padding: '3px 9px',
+                    borderRadius: '6px',
+                    fontSize: '0.78rem',
+                    fontWeight: 500,
+                    backgroundColor: 'var(--paper)',
+                    color: 'var(--ink)',
+                    border: '1px solid var(--border-light)',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor = 'var(--accent-gold)';
+                    e.currentTarget.style.backgroundColor = 'var(--cream)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = 'var(--border-light)';
+                    e.currentTarget.style.backgroundColor = 'var(--paper)';
+                  }}
+                >
+                  <span>{comp.name}</span>
+                </button>
+              ))}
             </div>
+
+            {/* Strictly Preserved Ecosystems Row */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', paddingTop: '4px' }}>
+              <span className="font-mono" style={{ fontSize: '0.7rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600 }}>
+                EXPLORE ECOSYSTEMS:
+              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+                
+                {/* YC Backed */}
+                <span className="font-sans" style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '0.82rem', fontWeight: 500, color: 'var(--ink)' }}>
+                  <span className="font-mono" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '16px', height: '16px', borderRadius: '3px', backgroundColor: '#ff6600', color: '#fff', fontSize: '0.65rem', fontWeight: 700 }}>Y</span>
+                  <span>YC Backed Startups</span>
+                </span>
+
+                <span style={{ color: 'var(--border-light)', fontSize: '0.75rem' }}>•</span>
+
+                {/* a16z Portfolio */}
+                <span className="font-sans" style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '0.82rem', fontWeight: 500, color: 'var(--ink)' }}>
+                  <span className="font-mono" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '1px 4px', borderRadius: '3px', backgroundColor: '#2d333a', color: '#ff6c37', fontSize: '0.6rem', fontWeight: 700 }}>a16z</span>
+                  <span>a16z Portfolio</span>
+                </span>
+
+                <span style={{ color: 'var(--border-light)', fontSize: '0.75rem' }}>•</span>
+
+                {/* Sequoia Backed */}
+                <span className="font-sans" style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '0.82rem', fontWeight: 500, color: 'var(--ink)' }}>
+                  <Layers size={13} color="var(--accent-moss)" />
+                  <span>Sequoia Backed</span>
+                </span>
+
+                <span style={{ color: 'var(--border-light)', fontSize: '0.75rem' }}>•</span>
+
+                {/* Series A & B */}
+                <span className="font-sans" style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '0.82rem', fontWeight: 500, color: 'var(--ink)' }}>
+                  <TrendingUp size={14} color="var(--accent-gold)" />
+                  <span>Series A & B</span>
+                </span>
+
+              </div>
+            </div>
+
           </div>
 
         </div>

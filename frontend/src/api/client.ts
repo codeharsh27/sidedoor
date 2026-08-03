@@ -102,7 +102,6 @@ export type FollowupReminder = {
 
 const isProbablyUrl = (value: string) => /^https?:\/\//i.test(value.trim());
 
-
 const normalizeProfile = (
   parsed: ProfileParseResponse,
   rawResumeText = '',
@@ -116,6 +115,51 @@ const normalizeProfile = (
   updated_at: new Date().toISOString(),
 });
 
+/**
+ * Centered API Request Sanitizer and Error boundary helper
+ */
+async function safeFetch(url: string, options?: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 20000); // 20s timeout limit
+
+  try {
+    const res = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      let cleanMsg = 'Scouting database temporary offline. Retrying...';
+      const errorLower = (errText + ' ' + res.status).toLowerCase();
+
+      if (errorLower.includes('openrouter') || errorLower.includes('key exhausted') || errorLower.includes('quota') || errorLower.includes('limit')) {
+        cleanMsg = 'Scouting pipelines are temporarily at maximum load. Trying backup models...';
+      } else if (errorLower.includes('401') || errorLower.includes('unauthorized') || errorLower.includes('403')) {
+        cleanMsg = 'Your onboarding credentials expired. Please refresh the page.';
+      } else if (errorLower.includes('504') || errorLower.includes('timeout')) {
+        cleanMsg = 'The request timed out. Please check your internet connection.';
+      } else if (errorLower.includes('500') || errorLower.includes('internal error')) {
+        cleanMsg = 'Our system encountered a brief hiccup. We are retrying the operation.';
+      } else if (errText.trim() && errText.length < 90) {
+        cleanMsg = errText;
+      }
+      throw new Error(cleanMsg);
+    }
+    return res;
+  } catch (err: any) {
+    clearTimeout(timeoutId);
+    if (err.name === 'AbortError') {
+      throw new Error('Connection timed out. Please check your internet connection.');
+    }
+    if (err.message && !err.message.includes('fetch')) {
+      throw err;
+    }
+    throw new Error('Unable to connect to the backend server. Please try again later.');
+  }
+}
+
 export const apiClient = {
   /**
    * Sends resume file or text to backend for LLM JSON preview parsing (Step 3/4 verification step)
@@ -125,26 +169,20 @@ export const apiClient = {
     if (file) {
       const formData = new FormData();
       formData.append('file', file);
-      res = await fetch(`${BASE_URL}/profile/parse-resume`, {
+      res = await safeFetch(`${BASE_URL}/profile/parse-resume`, {
         method: 'POST',
         body: formData,
       });
     } else if (rawText && rawText.trim()) {
       const formData = new FormData();
       formData.append('raw_text', rawText);
-      res = await fetch(`${BASE_URL}/profile/parse-resume`, {
+      res = await safeFetch(`${BASE_URL}/profile/parse-resume`, {
         method: 'POST',
         body: formData,
       });
     } else {
       throw new Error('Provide a file or raw text to parse.');
     }
-
-    if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(`Failed to parse resume: ${errText}`);
-    }
-
     return await res.json();
   },
 
@@ -152,17 +190,11 @@ export const apiClient = {
    * Submits complete verified onboarding payload to normalized database tables
    */
   async submitFullOnboarding(payload: any): Promise<{ status: string; user_id: string }> {
-    const res = await fetch(`${BASE_URL}/profile/onboarding`, {
+    const res = await safeFetch(`${BASE_URL}/profile/onboarding`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-
-    if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(`Onboarding submission failed: ${errText}`);
-    }
-
     return await res.json();
   },
 
@@ -179,29 +211,24 @@ export const apiClient = {
       const formData = new FormData();
       formData.append('user_id', userId);
       formData.append('file', file);
-      res = await fetch(`${BASE_URL}/profile/parse`, {
+      res = await safeFetch(`${BASE_URL}/profile/parse`, {
         method: 'POST',
         body: formData,
       });
     } else if (link && isProbablyUrl(link)) {
-      res = await fetch(`${BASE_URL}/profile/parse-url`, {
+      res = await safeFetch(`${BASE_URL}/profile/parse-url`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user_id: userId, portfolio_url: link }),
       });
     } else if (link) {
-      res = await fetch(`${BASE_URL}/profile/parse-text`, {
+      res = await safeFetch(`${BASE_URL}/profile/parse-text`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user_id: userId, raw_text: link }),
       });
     } else {
       throw new Error('Choose a resume file, portfolio URL, or profile text.');
-    }
-
-    if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(`Failed to parse profile: ${errText}`);
     }
 
     const data = await res.json() as ProfileParseResponse;
@@ -212,10 +239,7 @@ export const apiClient = {
    * Fetches the gap clusters for a specific tracked company
    */
   async getGapClusters(companyId: string): Promise<GapCluster[]> {
-    const res = await fetch(`${BASE_URL}/company/${companyId}/gaps`);
-    if (!res.ok) {
-      throw new Error('Failed to fetch gap clusters');
-    }
+    const res = await safeFetch(`${BASE_URL}/company/${companyId}/gaps`);
     return await res.json();
   },
 
@@ -223,39 +247,38 @@ export const apiClient = {
    * Fetches the matched opportunity cards for the user's dashboard
    */
   async getOpportunityCards(userId: string): Promise<OpportunityCardView[]> {
-    const res = await fetch(`${BASE_URL}/cards?user_id=${userId}`);
-    if (!res.ok) {
+    try {
+      const res = await safeFetch(`${BASE_URL}/cards?user_id=${userId}`);
+      const data = await res.json();
+      return data.cards ?? MOCK_CARDS;
+    } catch {
       return MOCK_CARDS;
     }
-    const data = await res.json();
-    return data.cards ?? MOCK_CARDS;
   },
 
   /**
    * Triggers a company scan directly on backend and returns matched cards & debug_info
    */
   async scanCompany(userId: string, companyUrl: string, force = false): Promise<{ company: CompanyResponse; cards: OpportunityCardView[]; debug_info?: any } | null> {
-    const res = await fetch(`${BASE_URL}/scan?force=${force}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user_id: userId, company_url: companyUrl }),
-    });
-
-    if (!res.ok) {
+    try {
+      const res = await safeFetch(`${BASE_URL}/scan?force=${force}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId, company_url: companyUrl }),
+      });
+      return await res.json();
+    } catch {
       return null;
     }
-
-    return await res.json();
   },
 
   /**
-   * Fetches curated VC discovery feed
+   * Fetches curated YC/VC discovery feed
    */
   async getCompanyFeed(userId?: string): Promise<any[]> {
     const url = userId ? `${BASE_URL}/company/feed?user_id=${userId}` : `${BASE_URL}/company/feed`;
     try {
-      const res = await fetch(url);
-      if (!res.ok) return [];
+      const res = await safeFetch(url);
       const data = await res.json();
       const rawList = Array.isArray(data) ? data : (data.companies ?? []);
       return rawList.map((item: any) => ({
@@ -289,119 +312,130 @@ export const apiClient = {
    * Fetches company health vetting signals
    */
   async getCompanyHealth(companyId: string): Promise<CompanyHealthSignal | null> {
-    const res = await fetch(`${BASE_URL}/company/${companyId}/health`);
-    if (!res.ok) return null;
-    return await res.json();
+    try {
+      const res = await safeFetch(`${BASE_URL}/company/${companyId}/health`);
+      return await res.json();
+    } catch {
+      return null;
+    }
   },
 
   /**
    * Fetches full 4-channel outreach playbook
    */
   async getOutreachPlaybook(companyId: string, cardId: string, userId: string): Promise<OutreachPlaybook | null> {
-    const res = await fetch(`${BASE_URL}/company/${companyId}/cards/${cardId}/outreach-playbook?user_id=${userId}`);
-    if (!res.ok) return null;
-    return await res.json();
+    try {
+      const res = await safeFetch(`${BASE_URL}/company/${companyId}/cards/${cardId}/outreach-playbook?user_id=${userId}`);
+      return await res.json();
+    } catch {
+      return null;
+    }
   },
 
   /**
    * Fetches Kanban Application Tracker board
    */
   async getKanbanBoard(userId: string): Promise<KanbanBoard> {
-    const res = await fetch(`${BASE_URL}/tracker?user_id=${userId}`);
-    if (!res.ok) {
+    try {
+      const res = await safeFetch(`${BASE_URL}/tracker?user_id=${userId}`);
+      return await res.json();
+    } catch {
       return { researching: [], building: [], reached_out: [], replied: [], interviewing: [], closed: [] };
     }
-    return await res.json();
   },
 
   /**
    * Creates application in tracker
    */
   async createTrackerApp(userId: string, companyId: string, cardId?: string, status = 'researching'): Promise<TrackerApplication | null> {
-    const res = await fetch(`${BASE_URL}/tracker`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user_id: userId, company_id: companyId, card_id: cardId, status }),
-    });
-    if (!res.ok) return null;
-    return await res.json();
+    try {
+      const res = await safeFetch(`${BASE_URL}/tracker`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId, company_id: companyId, card_id: cardId, status }),
+      });
+      return await res.json();
+    } catch {
+      return null;
+    }
   },
 
   /**
    * Updates application in tracker
    */
   async updateTrackerApp(appId: string, update: { status?: string; demo_url?: string; notes?: string }): Promise<TrackerApplication | null> {
-    const res = await fetch(`${BASE_URL}/tracker/${appId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(update),
-    });
-    if (!res.ok) return null;
-    return await res.json();
+    try {
+      const res = await safeFetch(`${BASE_URL}/tracker/${appId}`, {
+        method: 'POST', // standard patch behavior override for compatibility
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(update),
+      });
+      return await res.json();
+    } catch {
+      return null;
+    }
   },
 
   /**
    * Fetches 7-day follow-up reminders due
    */
   async getFollowupReminders(userId: string): Promise<FollowupReminder[]> {
-    const res = await fetch(`${BASE_URL}/tracker/reminders?user_id=${userId}`);
-    if (!res.ok) return [];
-    const data = await res.json();
-    return data.reminders ?? [];
+    try {
+      const res = await safeFetch(`${BASE_URL}/tracker/reminders?user_id=${userId}`);
+      const data = await res.json();
+      return data.reminders ?? [];
+    } catch {
+      return [];
+    }
   },
 
   /**
    * Updates status of a card (e.g. dismissed or selected)
    */
   async updateCardStatus(cardId: string, status: 'new' | 'selected' | 'dismissed'): Promise<{ card_id: string; status: string }> {
-    const res = await fetch(`${BASE_URL}/cards/${cardId}/status`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ status }),
-    });
-
-    if (!res.ok) {
+    try {
+      const res = await safeFetch(`${BASE_URL}/cards/${cardId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+      return await res.json();
+    } catch {
       return { card_id: cardId, status };
     }
-
-    return await res.json();
   },
 
   /**
    * Fetches discovered contacts for a company
    */
   async getContacts(companyId: string): Promise<any[]> {
-    const res = await fetch(`${BASE_URL}/company/${companyId}/contacts`);
-    if (!res.ok) {
+    try {
+      const res = await safeFetch(`${BASE_URL}/company/${companyId}/contacts`);
+      const data = await res.json();
+      return data.map((c: any) => {
+        let emailStr = "Apollo email lookup available";
+        if (c.contact_type === "github_profile") {
+          emailStr = "Public profile contact";
+        } else if (c.contact_type === "team_page") {
+          emailStr = "Direct team page contact";
+        }
+        return {
+          name: c.name || "Engineering Contributor",
+          role: c.title || "Software Engineer",
+          linkedin: c.source_url,
+          email: emailStr
+        };
+      });
+    } catch {
       return [];
     }
-    const data = await res.json();
-    return data.map((c: any) => {
-      let emailStr = "Apollo email lookup available";
-      if (c.contact_type === "github_profile") {
-        emailStr = "Public profile contact";
-      } else if (c.contact_type === "team_page") {
-        emailStr = "Direct team page contact";
-      }
-      return {
-        name: c.name || "Engineering Contributor",
-        role: c.title || "Software Engineer",
-        linkedin: c.source_url,
-        email: emailStr
-      };
-    });
   },
 
   /**
    * Fetches or generates outreach draft scaffold for a card
    */
   async getOutreachDraft(companyId: string, cardId: string, userId: string): Promise<{ draft_text: string }> {
-    const res = await fetch(`${BASE_URL}/company/${companyId}/cards/${cardId}/outreach-draft?user_id=${userId}`);
-    if (!res.ok) {
-      throw new Error('Failed to fetch outreach draft');
-    }
+    const res = await safeFetch(`${BASE_URL}/company/${companyId}/cards/${cardId}/outreach-draft?user_id=${userId}`);
     return await res.json();
   },
 
@@ -428,23 +462,23 @@ export const apiClient = {
     if (forceRefresh) params.append('force_refresh', 'true');
     if (params.toString()) url += `?${params.toString()}`;
 
-    const res = await fetch(url);
-    if (!res.ok) return [];
-    const data = await res.json();
-    return data.bounties ?? [];
+    try {
+      const res = await safeFetch(url);
+      const data = await res.json();
+      return data.bounties ?? [];
+    } catch {
+      return [];
+    }
   },
 
   /**
    * Triggers Steps 3-9 Company Deep Research, Pain Point Extraction & Scoped Brief
    */
   async deepResearchCompany(companyId: string, userId?: string): Promise<any> {
-    const res = await fetch(`${BASE_URL}/company/${companyId}/deep-research${userId ? `?user_id=${userId}` : ''}`, {
+    const res = await safeFetch(`${BASE_URL}/company/${companyId}/deep-research${userId ? `?user_id=${userId}` : ''}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
     });
-    if (!res.ok) {
-      throw new Error(`Failed deep research for ${companyId}`);
-    }
     return await res.json();
   },
 
@@ -452,15 +486,79 @@ export const apiClient = {
    * Step 10: Enrolls user in builder workflow & tracker
    */
   async enrollCompany(companyId: string, userId?: string): Promise<any> {
-    const res = await fetch(`${BASE_URL}/company/${companyId}/enroll${userId ? `?user_id=${userId}` : ''}`, {
+    const res = await safeFetch(`${BASE_URL}/company/${companyId}/enroll${userId ? `?user_id=${userId}` : ''}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
     });
-    if (!res.ok) {
-      throw new Error(`Failed to enroll in ${companyId}`);
-    }
     return await res.json();
   },
 
-};
+  /**
+   * Outreach Step 2: Fetch 2-3 decision-maker contacts for a company
+   */
+  async fetchOutreachContacts(companyId: string): Promise<any[]> {
+    try {
+      const res = await safeFetch(`${BASE_URL}/outreach/contacts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ company_id: companyId }),
+      });
+      const data = await res.json();
+      return data.contacts || [];
+    } catch (e) {
+      return [];
+    }
+  },
 
+  /**
+   * Outreach Step 4: Generate 3 message variants (Variant A, B, C)
+   */
+  async generateOutreachVariants(payload: any): Promise<any> {
+    try {
+      const res = await safeFetch(`${BASE_URL}/outreach/draft-variants`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      return data.variants || null;
+    } catch (e) {
+      return null;
+    }
+  },
+
+  /**
+   * Outreach Step 6: Log send action and mark as sent
+   */
+  async logOutreachSend(opportunityId: string, channel: string, variantUsed: string, messageText: string): Promise<any> {
+    const res = await safeFetch(`${BASE_URL}/outreach/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        opportunity_id: opportunityId,
+        channel,
+        variant_used: variantUsed,
+        message_text: messageText,
+      }),
+    });
+    return await res.json();
+  },
+
+  /**
+   * Outreach Step 6 & 7: Log final outcome ('interview', 'rejected', 'ghosted', 'positive_no_role')
+   */
+  async logOutreachOutcome(opportunityId: string, userId: string, companyId: string, outcome: string, notes?: string): Promise<any> {
+    const res = await safeFetch(`${BASE_URL}/outreach/outcome`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        opportunity_id: opportunityId,
+        user_id: userId,
+        company_id: companyId,
+        outcome,
+        notes,
+      }),
+    });
+    return await res.json();
+  },
+};

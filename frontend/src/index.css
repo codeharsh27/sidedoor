@@ -91,18 +91,54 @@ button {
   padding: 0 24px;
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
+/* Micro Animations */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes modalScaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-modal-scale {
+  animation: modalScaleIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
 /* Code Almanac Editorial Paper Cards */
 .glass-card, .paper-card {
   background: var(--paper);
   border: 1px solid var(--paper-edge);
   border-radius: 16px;
   box-shadow: 0 12px 34px -10px rgba(42, 46, 28, 0.08), 0 4px 6px -4px rgba(42, 46, 28, 0.04);
-  transition: all 0.2s ease;
+  transition: transform 0.24s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.24s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.24s ease;
 }
 
 .paper-card:hover, .glass-card:hover {
   border-color: var(--border);
-  box-shadow: 0 16px 40px -12px rgba(42, 46, 28, 0.12), 0 6px 10px -4px rgba(42, 46, 28, 0.06);
+  transform: translateY(-3px);
+  box-shadow: 0 18px 44px -12px rgba(42, 46, 28, 0.12), 0 6px 12px -4px rgba(42, 46, 28, 0.06);
 }
 
 /* Dark Contrast Panels (Like Code Almanac's CLI Box & Code Blocks) */
@@ -480,4 +516,126 @@ button {
 @keyframes stepIn {
   from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Page transitions & skeleton animations */
+.fade-in-smooth {
+  animation: fadeInSmooth 0.35s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes fadeInSmooth {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.pulse-skeleton {
+  animation: skeletonPulse 1.4s ease-in-out infinite;
+}
+
+@keyframes skeletonPulse {
+  0% {
+    opacity: 0.6;
+    background-color: var(--border-light);
+  }
+  50% {
+    opacity: 0.3;
+    background-color: var(--cream);
+  }
+  100% {
+    opacity: 0.6;
+    background-color: var(--border-light);
+  }
+}
+
+.skeleton-card {
+  border-radius: 12px;
+  border: 1px solid var(--border-light);
+  background-color: var(--paper);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.skeleton-bar {
+  height: 12px;
+  border-radius: 4px;
+}
+
+/* Drawer overlay fade animations */
+.drawer-overlay-enter {
+  animation: drawerOverlayFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.drawer-overlay-exit {
+  animation: drawerOverlayFadeOut 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Drawer content slide animations */
+.drawer-content-enter {
+  animation: drawerSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.drawer-content-exit {
+  animation: drawerSlideOut 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes drawerOverlayFadeIn {
+  from { opacity: 0; backdrop-filter: blur(0px); background-color: rgba(0, 0, 0, 0); }
+  to { opacity: 1; backdrop-filter: blur(5px); background-color: rgba(0, 0, 0, 0.65); }
+}
+
+@keyframes drawerOverlayFadeOut {
+  from { opacity: 1; backdrop-filter: blur(5px); background-color: rgba(0, 0, 0, 0.65); }
+  to { opacity: 0; backdrop-filter: blur(0px); background-color: rgba(0, 0, 0, 0); }
+}
+
+@keyframes drawerSlideIn {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+@keyframes drawerSlideOut {
+  from { transform: translateX(0); }
+  to { transform: translateX(100%); }
+}
+
+.fade-out-smooth {
+  animation: fadeOutSmooth 0.28s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes fadeOutSmooth {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+/* Gen-Z Cooking & Onboarding UI Keyframes */
+@keyframes pulseGlow {
+  0%, 100% { transform: scale(1); opacity: 0.8; }
+  50% { transform: scale(1.15); opacity: 1; box-shadow: 0 0 16px rgba(217, 119, 87, 0.6); }
+}
+
+@keyframes progressShimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.pulse-cooking {
+  animation: pulseGlow 1.8s infinite ease-in-out;
+}
+
+.progress-shimmer {
+  background: linear-gradient(90deg, var(--accent-gold) 0%, #f59e0b 50%, var(--accent-gold) 100%);
+  background-size: 200% 100%;
+  animation: progressShimmer 2s infinite linear;
 }

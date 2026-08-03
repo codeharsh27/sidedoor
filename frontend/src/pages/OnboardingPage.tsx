@@ -36,7 +36,7 @@ export function OnboardingPage() {
   };
 
   return (
-    <div className="onboarding-bg">
+    <div style={{ width: '100vw', height: '100vh', overflow: 'hidden' }}>
       <OnboardingWizard
         userId={user?.id || "usr_demo_01"}
         userEmail={user?.email || "arjun@sidedoor.internal"}

@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { HeroSection } from '../components/HeroSection';
 import { ScanPreviewSection } from '../components/ScanPreviewSection';
+import { BountiesShowcaseSection } from '../components/BountiesShowcaseSection';
+import { TrackerPreviewSection } from '../components/TrackerPreviewSection';
 import { WorkflowSection } from '../components/WorkflowSection';
 
 interface LandingPageProps {
@@ -12,7 +14,6 @@ export function LandingPage({ onTriggerUpload }: LandingPageProps) {
 
   const handleSearchCompany = (companyQuery: string) => {
     setSearchedCompany(companyQuery);
-    // User wants Analyze button to launch the onboarding flow
     onTriggerUpload();
   };
 
@@ -24,6 +25,8 @@ export function LandingPage({ onTriggerUpload }: LandingPageProps) {
         onUnlockDashboard={onTriggerUpload} 
         onSelectCompany={handleSearchCompany}
       />
+      <BountiesShowcaseSection onExploreBounties={onTriggerUpload} />
+      <TrackerPreviewSection onUnlockTracker={onTriggerUpload} />
       <WorkflowSection />
     </>
   );

@@ -103,30 +103,37 @@ export const Footer: React.FC = () => {
           </a>
         </nav>
 
-        {/* Code Almanac Style Massive Serif Wordmark in White/Cream over Green Forest Background */}
-        <div style={{ textAlign: 'center', width: '100%', margin: '14px 0 -18px', userSelect: 'none', pointerEvents: 'none' }}>
+        {/* Code Almanac Style Wordmark - stretched fully and fully visible */}
+        <div style={{ 
+          textAlign: 'center', 
+          width: '100%', 
+          margin: '32px 0 0 0', 
+          userSelect: 'none', 
+          pointerEvents: 'none',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: '12px'
+        }}>
           <span className="font-serif" style={{ 
-            fontSize: 'clamp(4.8rem, 18.5vw, 16rem)', 
-            fontWeight: 500, 
-            letterSpacing: '-0.045em', 
-            lineHeight: 0.82, 
-            color: '#f4ebd0', // Crisp light cream / white exact match!
-            display: 'block',
-            textShadow: '0 12px 36px rgba(0, 0, 0, 0.4)'
+            fontSize: 'clamp(4.8rem, 16vw, 15rem)', 
+            fontWeight: 700, 
+            color: '#efe7cd', 
+            letterSpacing: '-0.03em',
+            lineHeight: 0.95,
+            display: 'block'
           }}>
             SideDoor
           </span>
-        </div>
-
-        {/* Minimal Monospace Copyright Footer Tag in Soft Cream/Olive */}
-        <div className="font-mono" style={{ 
-          fontSize: '0.78rem',
-          color: 'rgba(244, 235, 208, 0.65)',
-          letterSpacing: '0.04em',
-          paddingBottom: '8px',
-          zIndex: 10
-        }}>
-          © {new Date().getFullYear()} SideDoor Inc.
+          
+          {/* Copyright Tag centered below the wordmark */}
+          <div className="font-mono" style={{ 
+            fontSize: '0.78rem',
+            color: 'rgba(244, 235, 208, 0.65)',
+            letterSpacing: '0.04em'
+          }}>
+            © {new Date().getFullYear()} · personal project
+          </div>
         </div>
 
       </div>
