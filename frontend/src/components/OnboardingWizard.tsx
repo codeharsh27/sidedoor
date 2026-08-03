@@ -109,8 +109,9 @@ export function OnboardingWizard({ userId, userEmail, onComplete }: OnboardingWi
         setVerifiedSkills(["TypeScript", "React", "Python", "PostgreSQL", "FastAPI"]);
       }
 
-      if (res.projects && res.projects.length > 0) {
-        setVerifiedProjects(res.projects.map((p: any) => ({
+      const extractedProjects = res.notable_projects || res.projects || [];
+      if (extractedProjects.length > 0) {
+        setVerifiedProjects(extractedProjects.map((p: any) => ({
           name: p.name || p.title || "Project",
           description: p.description || "",
           stack: p.stack || p.tech_used || [],
@@ -245,6 +246,7 @@ export function OnboardingWizard({ userId, userEmail, onComplete }: OnboardingWi
         {/* Logo */}
         <div style={{ cursor: 'pointer', position: 'absolute', top: '24px', left: '8%', display: 'flex', alignItems: 'center', gap: '8px' }} onClick={() => navigate("/")}>
           <img src="/sidedoor_logo.png" alt="SideDoor" style={{ height: '36px' }} />
+          <span style={{ fontFamily: 'Playfair Display, serif', fontSize: '1.25rem', fontWeight: 600, color: '#1a1f16' }}>SideDoor</span>
         </div>
 
         {/* Wizard Container */}
