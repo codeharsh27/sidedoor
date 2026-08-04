@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowRight, ArrowLeft, Check, Upload, Zap, Plus, X, FileText, AlertCircle, Sparkles } from "lucide-react";
+import { ArrowRight, ArrowLeft, Check, Zap, Plus, X, Sparkles } from "lucide-react";
 import type { FullOnboardingPayload, UserProjectItem } from "../types/schema";
-import { apiClient } from "../api/client";
 
 interface OnboardingWizardProps {
   userId: string;
@@ -40,10 +39,8 @@ const EXPERIENCE_LEVELS = ["< 1 year", "1-3 years", "3-6 years", "6+ years"];
 
 export function OnboardingWizard({ userId, userEmail, onComplete }: OnboardingWizardProps) {
   const navigate = useNavigate();
-  const [step, setStep] = useState<number>(0); // 0..4 (5 steps)
+  const [step, setStep] = useState<number>(0); // 0..3 (4 steps)
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isParsing, setIsParsing] = useState(false);
-  const [parseError, setParseError] = useState<string | null>(null);
 
   // Step 1: Identity & Roles
   const [name, setName] = useState("");
@@ -57,13 +54,15 @@ export function OnboardingWizard({ userId, userEmail, onComplete }: OnboardingWi
   const [selectedLocations, setSelectedLocations] = useState<string[]>(["remote", "india"]);
   const [selectedIndustries, setSelectedIndustries] = useState<string[]>(["AI-Native", "DevTools"]);
 
-  // Step 3: Resume File / Raw Text Input
-  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
-  const [rawText, setRawText] = useState("");
-
-  // Step 4: Verification & Edit State (Extracted Data)
-  const [verifiedSkills, setVerifiedSkills] = useState<string[]>([]);
-  const [verifiedProjects, setVerifiedProjects] = useState<UserProjectItem[]>([]);
+  // Step 3: Verification & Edit State (Manual Stack Input)
+  const [verifiedSkills, setVerifiedSkills] = useState<string[]>(["React", "TypeScript", "Python"]);
+  const [verifiedProjects, setVerifiedProjects] = useState<UserProjectItem[]>([{
+    name: "Portfolio Project",
+    description: "Built a fullstack application",
+    stack: ["React", "TypeScript", "PostgreSQL"],
+    status: "built",
+    is_production: false
+  }]);
   const [newSkillInput, setNewSkillInput] = useState("");
 
   const toggleRole = (r: string) => {
@@ -84,71 +83,6 @@ export function OnboardingWizard({ userId, userEmail, onComplete }: OnboardingWi
         ? (prev.length > 1 ? prev.filter(x => x !== locId) : prev)
         : [...prev, locId]
     );
-  };
-
-  // Step 3 -> Step 4 Extraction Handler
-  const handleParseResume = async () => {
-    if (!uploadedFile && !rawText.trim()) {
-      setParseError("Please select a resume file or paste text first.");
-      return;
-    }
-
-    setIsParsing(true);
-    setParseError(null);
-
-    try {
-      const res = await apiClient.parseResumePreview(uploadedFile || undefined, rawText || undefined);
-      
-      if (res.name && !name) {
-        setName(res.name);
-      }
-
-      if (res.skills && res.skills.length > 0) {
-        setVerifiedSkills(res.skills);
-      } else {
-        setVerifiedSkills(["TypeScript", "React", "Python", "PostgreSQL", "FastAPI"]);
-      }
-
-      const extractedProjects = res.notable_projects || res.projects || [];
-      if (extractedProjects.length > 0) {
-        setVerifiedProjects(extractedProjects.map((p: any) => ({
-          name: p.name || p.title || "Project",
-          description: p.description || "",
-          stack: p.stack || p.tech_used || [],
-          status: p.status || "built",
-          is_production: p.is_production || false,
-        })));
-      } else {
-        setVerifiedProjects([
-          {
-            name: "SideDoor Portfolio App",
-            description: "Fullstack AI-assisted opportunity discovery application",
-            stack: ["TypeScript", "React", "FastAPI"],
-            status: "built",
-            is_production: true,
-          }
-        ]);
-      }
-
-      setStep(3); // Advance to Verification Step 4
-    } catch (e: any) {
-      console.error("Extraction error:", e);
-      setParseError(e.message || "Failed to extract resume data. You can manually enter your skills in the next step.");
-      // Fallback defaults so user isn't stuck
-      setVerifiedSkills(["TypeScript", "React", "Python", "FastAPI", "PostgreSQL"]);
-      setVerifiedProjects([
-        {
-          name: "Fullstack Project",
-          description: "Production web software & API platform",
-          stack: ["React", "Python", "PostgreSQL"],
-          status: "built",
-          is_production: true
-        }
-      ]);
-      setStep(3);
-    } finally {
-      setIsParsing(false);
-    }
   };
 
   // Skill Editor Helpers
@@ -192,7 +126,7 @@ export function OnboardingWizard({ userId, userEmail, onComplete }: OnboardingWi
         location: location,
         years_experience: yearsExperience,
         current_role: currentRole,
-        skills: verifiedSkills.map(s => ({ skill: s, source: 'resume', confidence: 1.0 })),
+        skills: verifiedSkills.map(s => ({ skill: s, source: 'stated', confidence: 1.0 })),
         projects: verifiedProjects,
         preferences: {
           target_roles: selectedRoles,
@@ -214,17 +148,15 @@ export function OnboardingWizard({ userId, userEmail, onComplete }: OnboardingWi
   const STEP_TITLES = [
     { title: "Target Engineering Roles", subtitle: "Select all roles you are targeting" },
     { title: "Company Stage & Geography", subtitle: "Define your company size and location preferences" },
-    { title: "Resume & Portfolio Upload", subtitle: "Extract skills & projects automatically via AI" },
-    { title: "Verify Extracted Profile", subtitle: "Review and edit extracted skills and projects" },
+    { title: "Your Engineering Stack", subtitle: "Enter your core skills and notable projects" },
     { title: "Complete Scouting Setup", subtitle: "Launch your personalized opportunity feed" },
   ];
 
   const STEPS_NAV = [
     { label: "Profile", icon: "1" },
     { label: "Preferences", icon: "2" },
-    { label: "Resume", icon: "3" },
-    { label: "Stack Verification", icon: "4" },
-    { label: "Launch", icon: "5" }
+    { label: "Stack", icon: "3" },
+    { label: "Launch", icon: "4" }
   ];
 
   return (
@@ -254,7 +186,7 @@ export function OnboardingWizard({ userId, userEmail, onComplete }: OnboardingWi
           
           {/* Segmented Line Progress Bar */}
           <div style={{ display: "flex", gap: "6px", marginBottom: "16px" }}>
-            {[0, 1, 2, 3, 4].map((idx) => {
+            {[0, 1, 2, 3].map((idx) => {
               const isCompleted = idx < step;
               const isActive = idx === step;
               return (
@@ -275,7 +207,7 @@ export function OnboardingWizard({ userId, userEmail, onComplete }: OnboardingWi
           {/* Step Header */}
           <div style={{ marginBottom: "20px", borderBottom: "1px solid var(--paper-edge)", paddingBottom: "14px" }}>
             <div className="font-mono" style={{ fontSize: "0.72rem", color: "var(--accent-gold)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-              Step {step + 1} of 5 • {STEPS_NAV[step].label}
+              Step {step + 1} of 4 • {STEPS_NAV[step].label}
             </div>
             <h2 style={{ fontFamily: "var(--font-serif)", fontSize: "1.35rem", color: "var(--ink)", margin: "2px 0 0 0", fontWeight: 600 }}>
               {STEP_TITLES[step].title}
@@ -452,65 +384,18 @@ export function OnboardingWizard({ userId, userEmail, onComplete }: OnboardingWi
           </div>
         )}
 
-        {/* STEP 3: RESUME UPLOAD */}
+        {/* STEP 3: MANUAL STACK INPUT (Formerly Verification) */}
         {step === 2 && (
-          <div key={step} className="fade-in-smooth" style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-            <div style={{ border: "2px dashed var(--border)", borderRadius: "12px", padding: "16px 12px", textAlign: "center", backgroundColor: "var(--surface)" }}>
-              <Upload size={24} color="var(--accent-gold)" style={{ marginBottom: "8px" }} />
-              <h3 style={{ fontSize: "0.95rem", color: "var(--ink)", margin: "0 0 4px 0", fontWeight: 600 }}>
-                {uploadedFile ? uploadedFile.name : "Upload Resume (PDF or DOCX)"}
-              </h3>
-              <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", margin: "0 0 12px 0" }}>
-                pdfplumber & python-docx extract your skills, projects, and stack automatically.
-              </p>
-              <label className="btn-primary" style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "6px", padding: "6px 12px", fontSize: "0.78rem" }}>
-                <FileText size={12} />
-                <span>{uploadedFile ? "Change File" : "Choose Resume File"}</span>
-                <input
-                  type="file"
-                  accept=".pdf,.docx,.doc"
-                  style={{ display: "none" }}
-                  onChange={e => {
-                    if (e.target.files?.[0]) setUploadedFile(e.target.files[0]);
-                  }}
-                />
-              </label>
-            </div>
-
-            <div style={{ textAlign: "center" }} className="font-mono">
-              <span style={{ fontSize: "0.7rem", color: "var(--text-dim)", textTransform: "uppercase" }}>— Or Paste Raw Text —</span>
-            </div>
-
-            <div>
-              <textarea
-                placeholder="Paste plain resume text or bio here..."
-                value={rawText}
-                onChange={e => setRawText(e.target.value)}
-                style={{ width: "100%", minHeight: "80px", padding: "10px", backgroundColor: "var(--surface)", border: "1px solid var(--border)", borderRadius: "8px", fontSize: "0.82rem", color: "var(--ink)", outline: "none", resize: "none" }}
-              />
-            </div>
-
-            {parseError && (
-              <div style={{ padding: "8px 12px", backgroundColor: "#fee2e2", border: "1px solid #fca5a5", color: "#991b1b", borderRadius: "8px", fontSize: "0.78rem", display: "flex", alignItems: "center", gap: "6px" }}>
-                <AlertCircle size={12} />
-                <span>{parseError}</span>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* STEP 4: VERIFICATION & EDIT SCREEN */}
-        {step === 3 && (
-          <div key={step} className="fade-in-smooth" style={{ display: "flex", flexDirection: "column", gap: "16px", maxHeight: "250px", overflowY: "auto", paddingRight: "4px" }}>
+          <div key={step} className="fade-in-smooth" style={{ display: "flex", flexDirection: "column", gap: "16px", maxHeight: "300px", overflowY: "auto", paddingRight: "4px" }}>
             <div style={{ padding: "10px 14px", backgroundColor: "var(--cream)", borderRadius: "8px", border: "1px solid var(--border-light)", fontSize: "0.78rem", color: "var(--ink)", display: "flex", alignItems: "center", gap: "6px" }}>
               <Sparkles size={14} color="var(--accent-gold)" style={{ flexShrink: 0 }} />
-              <span><strong>AI Extraction Complete!</strong> Review and edit your skills or projects below before scouting.</span>
+              <span><strong>Build your profile.</strong> Add your core skills and notable projects so we can find accurate startup matches.</span>
             </div>
 
             {/* Skills Verification */}
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
-                <label className="onboarding-input-label" style={{ margin: 0 }}>Extracted Skills ({verifiedSkills.length})</label>
+                <label className="onboarding-input-label" style={{ margin: 0 }}>Core Skills ({verifiedSkills.length})</label>
                 <div style={{ display: "flex", gap: "4px" }}>
                   <input
                     type="text"
@@ -548,7 +433,7 @@ export function OnboardingWizard({ userId, userEmail, onComplete }: OnboardingWi
             {/* Projects Verification */}
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
-                <label className="onboarding-input-label" style={{ margin: 0 }}>Extracted Projects ({verifiedProjects.length})</label>
+                <label className="onboarding-input-label" style={{ margin: 0 }}>Notable Projects ({verifiedProjects.length})</label>
                 <button onClick={addEmptyProject} className="btn-secondary" style={{ padding: "4px 8px", fontSize: "0.72rem", height: "auto", display: "inline-flex", alignItems: "center", gap: "4px" }}>
                   <Plus size={10} />
                   <span>Add Project</span>
@@ -583,8 +468,8 @@ export function OnboardingWizard({ userId, userEmail, onComplete }: OnboardingWi
           </div>
         )}
 
-        {/* STEP 5: FINAL CONFIRMATION */}
-        {step === 4 && (
+        {/* STEP 4: FINAL CONFIRMATION */}
+        {step === 3 && (
           <div key={step} className="fade-in-smooth" style={{ padding: "12px 0", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: "10px" }}>
             <div style={{ width: "44px", height: "44px", borderRadius: "50%", backgroundColor: "var(--cream)", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <Zap size={20} color="var(--accent-gold)" />
@@ -594,7 +479,7 @@ export function OnboardingWizard({ userId, userEmail, onComplete }: OnboardingWi
                 Ready to Scout Opportunities
               </h3>
               <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", maxWidth: "380px", margin: "0 auto", lineHeight: 1.45 }}>
-                Your preferences and verified credentials are set. We will match you against high-paying VC startups in real time.
+                Your preferences and stack are set. We will match you against high-paying VC startups in real time.
               </p>
             </div>
           </div>
@@ -609,26 +494,14 @@ export function OnboardingWizard({ userId, userEmail, onComplete }: OnboardingWi
             </button>
           ) : <div />}
 
-          {step < 2 && (
+          {step < 3 && (
             <button onClick={() => setStep(step + 1)} className="btn-primary" style={{ padding: "6px 18px", fontSize: "0.8rem", height: "auto" }}>
               <span>Continue</span>
               <ArrowRight size={12} />
             </button>
           )}
 
-          {step === 2 && (
-            <button onClick={handleParseResume} disabled={isParsing} className="btn-primary" style={{ padding: "6px 18px", fontSize: "0.8rem", height: "auto" }}>
-              <span>{isParsing ? "Extracting..." : "Extract & Verify →"}</span>
-            </button>
-          )}
-
           {step === 3 && (
-            <button onClick={() => setStep(4)} className="btn-primary" style={{ padding: "6px 18px", fontSize: "0.8rem", height: "auto" }}>
-              <span>Confirm & Next →</span>
-            </button>
-          )}
-
-          {step === 4 && (
             <button onClick={handleFinalSubmit} disabled={isSubmitting} className="btn-primary" style={{ padding: "8px 20px", fontSize: "0.85rem", height: "auto" }}>
               <span>{isSubmitting ? "Launching..." : "Launch Feed 🚀"}</span>
             </button>
