@@ -15,6 +15,10 @@ from functools import lru_cache
 
 
 
+import asyncio
+import functools
+from sentence_transformers import SentenceTransformer
+
 from app.services.resume_parser import ProfileData
 
 logger = logging.getLogger(__name__)
@@ -42,7 +46,7 @@ class Embedder:
         """Number of dimensions in the embedding vector."""
         return self._dimensions
 
-    def embed_text(self, text: str) -> list[float]:
+    async def embed_text(self, text: str) -> list[float]:
         """
         Embed arbitrary text into a vector.
 
@@ -56,7 +60,8 @@ class Embedder:
         Returns:
             List of floats representing the embedding vector.
         """
-        embedding = self._model.encode(text, normalize_embeddings=True)
+        func = functools.partial(self._model.encode, text, normalize_embeddings=True)
+        embedding = await asyncio.to_thread(func)
         return embedding.tolist()
 
     def embed_profile(self, parsed: ProfileData) -> list[float]:
@@ -96,7 +101,8 @@ class Embedder:
 
         combined = "\n".join(parts)
         logger.debug("Embedding profile text (%d chars)", len(combined))
-        return self.embed_text(combined)
+        embedding = self._model.encode(combined, normalize_embeddings=True)
+        return embedding.tolist()
 
 
 @lru_cache(maxsize=1)

@@ -112,7 +112,11 @@ export function App() {
           />
           <Route
             path="/dashboard"
-            element={<DashboardPage />}
+            element={
+              user
+                ? <DashboardPage />
+                : <LoginPage onBackToLanding={() => navigate("/")} />
+            }
           />
         </Routes>
       </main>

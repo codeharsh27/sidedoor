@@ -78,9 +78,11 @@ it comes from company-authored blogs/docs. If a specific technical gap is descri
 classify it as `direct_surface` or `stated_pain_point`.
 
 ## Instructions
-- Return ONLY a JSON object with exactly two keys: "fixability_type" and "fixability_reason".
+- Return ONLY a JSON object with exactly four keys: "fixability_type", "fixability_reason", "has_public_api", "has_ui_surface".
 - "fixability_type" must be one of: "direct_surface", "stated_pain_point", "too_vague"
 - "fixability_reason" must be 1-2 sentences explaining the classification decision.
+- "has_public_api" must be boolean (true/false) based on whether evidence implies a public API exists.
+- "has_ui_surface" must be boolean (true/false) based on whether evidence implies a UI surface exists.
 - Do not include any other text, markdown, or explanation outside the JSON.
 """
 
@@ -89,22 +91,22 @@ async def _classify_cluster_llm(
     cluster_label: str,
     evidence_snippets: list[str],
     has_github: bool,
-) -> tuple[str, str]:
+) -> tuple[str, str, bool, bool]:
     """
     Ask the LLM to classify a cluster's fixability type.
-    Returns (fixability_type, fixability_reason).
+    Returns (fixability_type, fixability_reason, has_public_api, has_ui_surface).
     Falls back to 'too_vague' on any error.
     """
     if not settings.openrouter_api_key:
         logger.warning("OPENROUTER_API_KEY missing — defaulting fixability_type to 'too_vague'")
-        return "too_vague", "No LLM API key configured; defaulted to too_vague."
+        return "too_vague", "No LLM API key configured; defaulted to too_vague.", False, False
 
     has_github_note = (
         "Note: This company has a public GitHub repository — this is a direct_surface signal."
         if has_github else ""
     )
     snippets_text = "\n\n".join(
-        f"Evidence {i+1}: {s[:400]}" for i, s in enumerate(evidence_snippets[:5])
+        f"<evidence>{s[:400]}</evidence>" for s in evidence_snippets[:5]
     )
     user_content = (
         f"Cluster label: {cluster_label}\n\n"
@@ -120,7 +122,6 @@ async def _classify_cluster_llm(
             {"role": "system", "content": FIXABILITY_SYSTEM_PROMPT},
             {"role": "user", "content": user_content},
         ],
-        "response_format": {"type": "json_object"},
         "temperature": 0.0,
         "max_tokens": 256,
     }
@@ -140,24 +141,36 @@ async def _classify_cluster_llm(
                     "LLM fixability failed with HTTP %d: %s",
                     resp.status_code, resp.text[:300]
                 )
-                return "too_vague", f"LLM returned HTTP {resp.status_code}; defaulted to too_vague."
+                return "too_vague", f"LLM returned HTTP {resp.status_code}; defaulted to too_vague.", False, False
 
             data = resp.json()
-            content = data["choices"][0]["message"]["content"]
+            content = data["choices"][0]["message"]["content"].strip()
+            
+            # Strip markdown json fences if present
+            if content.startswith("```"):
+                lines = content.splitlines()
+                if lines[0].startswith("```"):
+                    lines = lines[1:]
+                if lines and lines[-1].startswith("```"):
+                    lines = lines[:-1]
+                content = "\n".join(lines).strip()
+
             parsed = json.loads(content)
 
             ftype = parsed.get("fixability_type", "too_vague")
             freason = parsed.get("fixability_reason", "No reason provided.")
+            has_api = bool(parsed.get("has_public_api", False))
+            has_ui = bool(parsed.get("has_ui_surface", False))
 
             if ftype not in ("direct_surface", "stated_pain_point", "too_vague"):
                 logger.warning("LLM returned invalid fixability_type '%s' — defaulting", ftype)
-                return "too_vague", f"LLM returned invalid type '{ftype}'; defaulted."
+                return "too_vague", f"LLM returned invalid type '{ftype}'; defaulted.", False, False
 
-            return ftype, freason
+            return ftype, freason, has_api, has_ui
 
     except Exception as e:
         logger.error("LLM fixability exception for cluster '%s': %s", cluster_label, e)
-        return "too_vague", f"Classification error: {e}; defaulted to too_vague."
+        return "too_vague", f"Classification error: {e}; defaulted to too_vague.", False, False
 
 
 async def compute_fixability(
@@ -210,7 +223,7 @@ async def compute_fixability(
                 ev_rows = (await db.execute(stmt_ev)).scalars().all()
                 evidence_snippets = [ev.raw_text[:500] for ev in ev_rows if ev.raw_text]
 
-            fixability_type, fixability_reason = await _classify_cluster_llm(
+            fixability_type, fixability_reason, has_api, has_ui = await _classify_cluster_llm(
                 cluster_label=cluster.label,
                 evidence_snippets=evidence_snippets,
                 has_github=has_github,
@@ -238,8 +251,8 @@ async def compute_fixability(
 
                 if flag:
                     flag.has_public_repo = has_github
-                    flag.has_public_api = False
-                    flag.has_ui_surface = True
+                    flag.has_public_api = has_api
+                    flag.has_ui_surface = has_ui
                     flag.is_buildable = is_buildable
                     flag.fixability_type = fixability_type
                     flag.fixability_reason = fixability_reason
@@ -249,8 +262,8 @@ async def compute_fixability(
                         gap_cluster_id=cluster.id,
                         company_id=company_id,
                         has_public_repo=has_github,
-                        has_public_api=False,
-                        has_ui_surface=True,
+                        has_public_api=has_api,
+                        has_ui_surface=has_ui,
                         is_buildable=is_buildable,
                         fixability_type=fixability_type,
                         fixability_reason=fixability_reason,

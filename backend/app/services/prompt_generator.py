@@ -21,29 +21,35 @@ from app.db.models import Company, EvidenceItem, GapCluster, JobPosting, RoleMat
 
 logger = logging.getLogger(__name__)
 
-# Handoff prompt template
 _MEMENTO_PROMPT_TEMPLATE = """You are an expert senior software engineer and build mentor. A developer is building a small MVP/scaffold to address a real problem identified at {company_name}.
 
 Target Company: {company_name}
 Matching Role: {role_title}
 
-### The Problem/Gap:
+### 1. The Problem/Gap & Competitive Context:
 - Topic: {cluster_label}
-- Evidence from users/community:
+- Signal Strength: {evidence_count} evidence items found across {source_channels}
+- Evidence Trail (with upvotes/dates):
 {evidence_quotes}
 
-### Developer Profile:
+### 2. Developer Profile & Domain Matching:
 - Core Skills: {user_skills}
 - Relevant Skill to target: {top_matching_skill}
+- Gap Domain: {gap_domain}
 - Ingested Resume/Portfolio Summary: {user_summary}
+- Why this matches you: {matching_reason}
+
+### 3. Build Scope (3-Day MVP):
+Create a detailed 2-3 hour implementation roadmap and scaffolding plan for a small MVP.
+Specific 3-day MVP boundaries: focus on demonstrating a solution for the gap, do not over-engineer.
+What NOT to build: Do not build full auth, billing, or production infrastructure. Keep it narrowly focused on the core friction point.
 
 ### Your Task:
-Create a detailed 2-3 hour implementation roadmap and scaffolding plan for a small MVP that demonstrates a solution to this problem.
-
 Follow these strict rules:
-1. **Scaffold, don't finish**: Suggest folder layout, model schemas, and endpoint signatures, but do NOT write the core business logic. Use comments like "# TODO: implement auth logic using {top_matching_skill}" so the developer does the actual thinking.
+1. **Scaffold, don't finish**: Suggest folder layout, model schemas, and endpoint signatures, but do NOT write the core business logic. Use comments like "# TODO: implement logic using {top_matching_skill}" so the developer does the actual thinking.
 2. **Match the environment**: Keep the tech stack focused on the developer's core skills ({top_matching_skill}).
 3. **Verification**: Outline 3 concrete CLI commands or tests the developer can run to verify their build works.
+4. **Outreach Package Checklist**: Include a short checklist for preparing the outreach email (e.g. Loom video recorded, GitHub repo public, demo deployed).
 """
 
 
@@ -147,17 +153,27 @@ async def generate_handoff_prompt(
     # 4. Fetch Evidence items to build aggregates & quotes
     evidence_text = ""
     evidence_quotes_list = []
+    evidence_count = 0
+    source_channels = "N/A"
+    
     if cluster.evidence_item_ids:
         stmt_ev = select(EvidenceItem).where(EvidenceItem.id.in_(cluster.evidence_item_ids))
         items = (await db.execute(stmt_ev)).scalars().all()
+        evidence_count = len(items)
+        channels = set(item.source_type for item in items if item.source_type)
+        if channels:
+            source_channels = ", ".join(sorted(channels))
+            
         evidence_text = " ".join(item.raw_text for item in items)
         
         # Take up to 3 quotes for the prompt
         for item in items[:3]:
-            source_type_label = item.source_type.replace("_", " ").title()
+            source_type_label = item.source_type.replace("_", " ").title() if item.source_type else "Unknown"
             quote_text = item.raw_text[:300] + ("..." if len(item.raw_text) > 300 else "")
+            date_str = str(item.posted_at)[:10] if item.posted_at else "Unknown Date"
+            upvotes = getattr(item, "upvotes", 0)
             evidence_quotes_list.append(
-                f'- Quote from {source_type_label} ({item.source_url}):\n  "{quote_text}"'
+                f'- Quote from {source_type_label} ({item.source_url}) on {date_str} [Upvotes: {upvotes}]:\n  "{quote_text}"'
             )
 
     evidence_quotes = "\n".join(evidence_quotes_list) if evidence_quotes_list else "- No community quotes available."
@@ -191,6 +207,9 @@ async def generate_handoff_prompt(
         top_matching_skill=top_matching_skill,
         user_summary=profile.parsed_project_summary or "No summary available.",
         gap_domain=gap_domain,
+        evidence_count=evidence_count,
+        source_channels=source_channels,
+        matching_reason=render_explanation(top_matching_skill, gap_domain)
     )
 
     return prompt

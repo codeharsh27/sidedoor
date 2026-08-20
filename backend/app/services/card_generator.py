@@ -4,7 +4,7 @@ Stage 2.6 — Card Generation via constrained OpenRouter LLM call.
 
 import logging
 from typing import Any
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 import httpx
 
 from app.config import settings
@@ -20,7 +20,7 @@ class CardExtractionModel(BaseModel):
     """The exact Pydantic model corresponding to the forced JSON schema."""
     gap_description: str
     matching_reasoning: str
-    sources: list[CardSourceModel]
+    sources: list[CardSourceModel] = Field(min_length=1)
     fit_tier: str
     bridge_note: str | None = None
 
@@ -32,6 +32,7 @@ SCHEMA_JSON = {
     "matching_reasoning": { "type": "string" },
     "sources": {
       "type": "array",
+      "minItems": 1,
       "items": {
         "type": "object",
         "required": ["url", "quote", "published_date"],
@@ -110,7 +111,7 @@ class CardGenerator:
         user_prompt = (
             f"Cluster Topic: {cluster_label}\n\n"
             f"Developer Profile:\n{user_profile_text}\n\n"
-            f"Evidence Items:\n{evidence_text}\n\n"
+            f"Evidence Items:\n<evidence>\n{evidence_text}\n</evidence>\n\n"
             f"Framing Instructions: {framing_instructions}\n"
         )
 

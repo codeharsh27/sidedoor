@@ -41,7 +41,7 @@ class DocumentExtractionError(Exception):
     pass
 
 
-def extract_from_file(file_bytes: bytes, content_type: str | None, filename: str | None) -> ExtractionResult:
+async def extract_from_file(file_bytes: bytes, content_type: str | None, filename: str | None) -> ExtractionResult:
     """
     Extract text from an uploaded file (PDF or DOCX).
 
@@ -59,6 +59,7 @@ def extract_from_file(file_bytes: bytes, content_type: str | None, filename: str
     Raises:
         DocumentExtractionError: If extraction fails.
     """
+    import asyncio
     if not file_bytes:
         raise DocumentExtractionError("Uploaded file is empty.")
 
@@ -68,9 +69,9 @@ def extract_from_file(file_bytes: bytes, content_type: str | None, filename: str
     except Exception as e:
         raise DocumentExtractionError(str(e)) from e
 
-    # Security: validate file type
+    # Security: validate file type and magic bytes
     try:
-        validate_file_content_type(content_type, filename)
+        validate_file_content_type(content_type, filename, file_bytes)
     except UnsupportedFileTypeError as e:
         raise DocumentExtractionError(str(e)) from e
 
@@ -80,14 +81,14 @@ def extract_from_file(file_bytes: bytes, content_type: str | None, filename: str
     if source_type == "pdf":
         from app.services.pdf_extractor import PDFExtractionError, extract_text_from_pdf
         try:
-            raw_text = extract_text_from_pdf(file_bytes)
+            raw_text = await asyncio.to_thread(extract_text_from_pdf, file_bytes)
         except PDFExtractionError as e:
             raise DocumentExtractionError(str(e)) from e
 
     elif source_type == "docx":
         from app.services.docx_extractor import DOCXExtractionError, extract_text_from_docx
         try:
-            raw_text = extract_text_from_docx(file_bytes)
+            raw_text = await asyncio.to_thread(extract_text_from_docx, file_bytes)
         except DOCXExtractionError as e:
             raise DocumentExtractionError(str(e)) from e
 

@@ -11,6 +11,31 @@ import {
   ChevronRight, ArrowRight, RefreshCw, X, Compass, Kanban, Coins, Sparkles
 } from 'lucide-react';
 
+export interface DiscoveryCompany {
+  id: string;
+  name: string;
+  url: string;
+  funding_stage: string;
+  funding: string;
+  employee_count_approx: number;
+  investor_tags: string[];
+  tech_stack_tags: string[];
+  why_for_you: string;
+  fit_score: number;
+  role: string;
+  role_classification: string;
+  evidence_count: number;
+  region_tag: string;
+  compensation_tier: string;
+}
+
+export interface TrackedCompany {
+  id: string;
+  name: string;
+  status: string;
+  [key: string]: unknown;
+}
+
 interface DashboardViewProps {
   userProfile?: UserProfile;
   supabaseUser?: User;
@@ -76,7 +101,7 @@ const getOpportunityDetails = (item: OpportunityCardView) => {
   }
 };
 
-const DEFAULT_DISCOVERY_FEED: any[] = [
+const DEFAULT_DISCOVERY_FEED: DiscoveryCompany[] = [
   // --- TIER 1 COMPANIES ---
   {
     id: 'drdroid',
@@ -982,8 +1007,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ userProfile, supab
   const [bountiesList, setBountiesList] = useState<BountyItem[]>(DEFAULT_OPPORTUNITIES);
 
   // Phase 1-5 State additions
-  const [discoveryFeed, setDiscoveryFeed] = useState<any[]>(DEFAULT_DISCOVERY_FEED);
-  const [followupReminders, setFollowupReminders] = useState<any[]>([]);
+  const [discoveryFeed, setDiscoveryFeed] = useState<DiscoveryCompany[]>(DEFAULT_DISCOVERY_FEED);
+  const [followupReminders, setFollowupReminders] = useState<TrackedCompany[]>([]);
   const [isRefreshingFeed, setIsRefreshingFeed] = useState(false);
   const [isBountiesLoading, setIsBountiesLoading] = useState(false);
   const [trackerStageFilter, setTrackerStageFilter] = useState<string>('all');
@@ -998,7 +1023,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ userProfile, supab
   const [isClosingDeepResearch, setIsClosingDeepResearch] = useState<boolean>(false);
   const [isClosingViewMore, setIsClosingViewMore] = useState<boolean>(false);
   const [isDeepResearching, setIsDeepResearching] = useState<boolean>(false);
-  const [deepResearchResult, setDeepResearchResult] = useState<any | null>(null);
+  const [deepResearchResult, setDeepResearchResult] = useState<Record<string, unknown> | null>(null);
   const [enrollSuccessMessage, setEnrollSuccessMessage] = useState<string | null>(null);
   const [selectedMvpOptionIndex, setSelectedMvpOptionIndex] = useState<number>(0);
   const [copiedClaudeToast, setCopiedClaudeToast] = useState<boolean>(false);
@@ -1019,7 +1044,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ userProfile, supab
   }, [isDeepResearching]);
 
   // Persistent Pipeline Cache state for companies analyzed (Scoped per user)
-  const [analyzedCompaniesCache, setAnalyzedCompaniesCache] = useState<Record<string, any>>({});
+  const [analyzedCompaniesCache, setAnalyzedCompaniesCache] = useState<Record<string, TrackedCompany>>({});
 
   useEffect(() => {
     if (!currentUserId) {
@@ -1092,12 +1117,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ userProfile, supab
   }, []);
 
   // Streamlined Outreach Pipeline States
-  const [outreachContactsList, setOutreachContactsList] = useState<any[]>([]);
+  const [outreachContactsList, setOutreachContactsList] = useState<Record<string, unknown>[]>([]);
   const [outreachStatus, setOutreachStatus] = useState<string>('building');
   const [outcomeToast, setOutcomeToast] = useState<string | null>(null);
 
   // Persistent Company Workflow Tracker State (Scoped per user, defaults to empty [] for new users)
-  const [trackedCompaniesList, setTrackedCompaniesList] = useState<any[]>([]);
+  const [trackedCompaniesList, setTrackedCompaniesList] = useState<TrackedCompany[]>([]);
 
   useEffect(() => {
     if (!currentUserId) {
@@ -1119,7 +1144,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ userProfile, supab
     } catch (e) {}
   }, [trackedCompaniesList, currentUserId]);
 
-  const saveOrUpdateTrackedCompany = (companyData: any, newStatus?: string) => {
+  const saveOrUpdateTrackedCompany = (companyData: DiscoveryCompany | TrackedCompany, newStatus?: string) => {
     setTrackedCompaniesList(prev => {
       const compId = (companyData.company_name || companyData.name || '').toLowerCase();
       const existingIdx = prev.findIndex(item => item.company_name.toLowerCase() === compId);
@@ -1149,7 +1174,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ userProfile, supab
     });
   };
 
-  const handleTapCompanyCard = async (companyItem: any) => {
+  const handleTapCompanyCard = async (companyItem: DiscoveryCompany) => {
     const compName = companyItem.name;
     const compId = compName.toLowerCase();
 
@@ -1183,7 +1208,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ userProfile, supab
     setShowClaudePromptBox(false);
 
     const origUrl = companyItem.url || `https://www.${compId}.com`;
-    let resultObj: any = null;
+    let resultObj: TrackedCompany | null = null;
 
     try {
       const res = await apiClient.deepResearchCompany(compId, currentUserId);

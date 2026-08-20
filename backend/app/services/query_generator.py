@@ -21,6 +21,9 @@ def generate_queries(
     queries = [
         (f'"{c_name}" complaints OR frustrated site:reddit.com', "pain_point", 180),
         (f'"{c_name}" feature request OR "wish it had"', "pain_point", 180),
+        (f'"switched from {c_name}" OR "alternative to {c_name}" OR "moved away from {c_name}"', "competitor_switch", 180),
+        (f'"{c_name}" "pain" OR "issue" OR "broken" OR "slow"', "product_pain", 180),
+        (f'"{c_name}" "wish" OR "if only" OR "missing feature"', "feature_wish", 180),
         (f'"Show HN" "{c_name}"', "recent_activity", 60),
         (f'"{c_name}" changelog', "recent_activity", 60),
         (f'"{c_name}" founder twitter OR "building"', "founder_voice", 60),

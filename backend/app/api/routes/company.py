@@ -27,42 +27,7 @@ class CompanyCreate(BaseModel):
     careers_page_url: str | None = Field(None, description="Optional link to careers page")
     ats_slug: str | None = Field(None, max_length=100, description="Optional ATS slug override")
 
-    @field_validator("url")
-    @classmethod
-    def validate_company_url(cls, v: str) -> str:
-        """Apply security and format validation to company URL."""
-        try:
-            return validate_url(v)
-        except SSRFBlockedError as e:
-            raise ValueError(f"URL blocked for security: {e}")
-        except InvalidURLError as e:
-            raise ValueError(f"Invalid URL: {e}")
-
-    @field_validator("github_repo_url")
-    @classmethod
-    def validate_github_url(cls, v: str | None) -> str | None:
-        """Apply security and format validation to GitHub URL."""
-        if not v:
-            return None
-        try:
-            return validate_url(v)
-        except SSRFBlockedError as e:
-            raise ValueError(f"GitHub URL blocked for security: {e}")
-        except InvalidURLError as e:
-            raise ValueError(f"Invalid GitHub URL: {e}")
-
-    @field_validator("careers_page_url")
-    @classmethod
-    def validate_careers_url(cls, v: str | None) -> str | None:
-        """Apply security and format validation to careers page URL."""
-        if not v:
-            return None
-        try:
-            return validate_url(v)
-        except SSRFBlockedError as e:
-            raise ValueError(f"Careers URL blocked for security: {e}")
-        except InvalidURLError as e:
-            raise ValueError(f"Invalid Careers URL: {e}")
+    pass
 
 
 class CompanyResponse(BaseModel):
@@ -121,6 +86,15 @@ async def create_company(
     payload: CompanyCreate, db: AsyncSession = Depends(get_db_session)
 ) -> Company:
     """Create a new target company record."""
+    try:
+        payload.url = await validate_url(payload.url)
+        if payload.github_repo_url:
+            payload.github_repo_url = await validate_url(payload.github_repo_url)
+        if payload.careers_page_url:
+            payload.careers_page_url = await validate_url(payload.careers_page_url)
+    except (InvalidURLError, SSRFBlockedError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
     # Check if company with same homepage URL already exists
     stmt = select(Company).where(Company.url == payload.url)
     res = await db.execute(stmt)
@@ -163,15 +137,19 @@ async def trigger_scan(
         logger.error("Scan error for company %s: %s", company.name, e)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to scan company: {str(e)}",
+            detail="Failed to scan company due to an internal error.",
         )
 
 
 @router.get("/{company_id}/evidence", response_model=list[EvidenceItemResponse])
 async def get_evidence(
-    company_id: str, db: AsyncSession = Depends(get_db_session)
+    company_id: str, 
+    limit: int = 10,
+    offset: int = 0,
+    db: AsyncSession = Depends(get_db_session)
 ) -> list[EvidenceItem]:
     """Retrieve all collected evidence items for a company."""
+    limit = min(limit, 100)
     stmt = select(Company).where(Company.id == company_id)
     res = await db.execute(stmt)
     company = res.scalar_one_or_none()
@@ -181,16 +159,20 @@ async def get_evidence(
             detail=f"Company with ID {company_id} not found",
         )
 
-    stmt_ev = select(EvidenceItem).where(EvidenceItem.company_id == company.id).order_by(EvidenceItem.fetched_at.desc())
+    stmt_ev = select(EvidenceItem).where(EvidenceItem.company_id == company.id).order_by(EvidenceItem.fetched_at.desc()).limit(limit).offset(offset)
     res_ev = await db.execute(stmt_ev)
     return list(res_ev.scalars().all())
 
 
 @router.get("/{company_id}/jobs", response_model=list[JobPostingResponse])
 async def get_jobs(
-    company_id: str, db: AsyncSession = Depends(get_db_session)
+    company_id: str, 
+    limit: int = 10,
+    offset: int = 0,
+    db: AsyncSession = Depends(get_db_session)
 ) -> list[JobPosting]:
     """Retrieve all open job postings collected for a company."""
+    limit = min(limit, 100)
     stmt = select(Company).where(Company.id == company_id)
     res = await db.execute(stmt)
     company = res.scalar_one_or_none()
@@ -200,7 +182,7 @@ async def get_jobs(
             detail=f"Company with ID {company_id} not found",
         )
 
-    stmt_jobs = select(JobPosting).where(JobPosting.company_id == company.id).order_by(JobPosting.posted_at.desc())
+    stmt_jobs = select(JobPosting).where(JobPosting.company_id == company.id).order_by(JobPosting.posted_at.desc()).limit(limit).offset(offset)
     res_jobs = await db.execute(stmt_jobs)
     return list(res_jobs.scalars().all())
 

@@ -15,9 +15,9 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 class AuthRequest(BaseModel):
-    name: str | None = None
-    email: str = Field(..., description="User's email address")
-    password: str = Field(..., description="User's password")
+    name: str | None = Field(None, max_length=100)
+    email: str = Field(..., max_length=254, description="User's email address")
+    password: str = Field(..., max_length=128, description="User's password")
 
 
 class UserProfileContract(BaseModel):
@@ -63,7 +63,7 @@ async def login(
         if user.password_hash != payload.password:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Incorrect password",
+                detail="Invalid email or password",
             )
     else:
         # Register new user

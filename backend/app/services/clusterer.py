@@ -60,6 +60,7 @@ _STOPWORDS: frozenset[str] = frozenset(
         "before", "between", "into", "through", "during", "https", "http",
         "www", "com", "org", "net", "com", "get", "use", "used", "using",
         "new", "one", "two", "like", "time", "make", "made",
+        "issue", "problem", "slow", "bug", "help",
     }
 )
 
@@ -205,6 +206,14 @@ async def cluster_evidence(
     )
 
     # ------------------------------------------------------------------
+    # Step 1.5: Fetch company name for embedding prefix
+    # ------------------------------------------------------------------
+    from app.db.models import Company
+    company_res = await db.execute(select(Company).where(Company.id == company_id))
+    company = company_res.scalar_one_or_none()
+    company_name = company.name if company else "Company"
+
+    # ------------------------------------------------------------------
     # Step 2: Embed each item
     # ------------------------------------------------------------------
     embedder = get_embedder(settings.embedding_model)
@@ -212,7 +221,8 @@ async def cluster_evidence(
 
     for item in items:
         try:
-            vec = np.array(embedder.embed_text(item.raw_text), dtype=np.float64)
+            text_to_embed = f"{company_name}: {item.raw_text}"
+            vec = np.array(await embedder.embed_text(text_to_embed), dtype=np.float64)
             embedded.append((item, vec))
         except Exception as exc:
             # One bad item must never abort the whole run.

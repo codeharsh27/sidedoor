@@ -143,62 +143,77 @@ async def enrich_cards_for_user(
     company_uuid: uuid.UUID | None = None
 ) -> list[dict]:
     """Retrieve and fully enrich opportunity cards for a user."""
+    from sqlalchemy.orm import selectinload
+
+    # Fetch user profile once
+    stmt_profile = select(UserProfile).where(UserProfile.user_id == user_uuid)
+    profile = (await db.execute(stmt_profile)).scalar_one_or_none()
+    user_skills = profile.parsed_skills if profile else []
+    user_domains = profile.parsed_domains if profile else []
+
+    stmt_cards = select(Card).where(Card.user_id == user_uuid)
     if company_uuid:
-        stmt_cards = select(Card).where(
-            Card.user_id == user_uuid, Card.company_id == company_uuid
-        )
-    else:
-        stmt_cards = select(Card).where(Card.user_id == user_uuid)
+        stmt_cards = stmt_cards.where(Card.company_id == company_uuid)
+        
+    stmt_cards = stmt_cards.options(
+        selectinload(Card.gap_cluster),
+        selectinload(Card.company),
+        selectinload(Card.fixability_flag),
+        selectinload(Card.role_match).selectinload(RoleMatch.job_posting)
+    )
 
     res_cards = await db.execute(stmt_cards)
     cards = list(res_cards.scalars().all())
 
+    if not cards:
+        return []
+
+    # Batch fetch all evidence items needed across all gap clusters
+    all_evidence_ids = set()
+    for card in cards:
+        if card.gap_cluster and card.gap_cluster.evidence_item_ids:
+            all_evidence_ids.update(card.gap_cluster.evidence_item_ids)
+            
+    evidence_items_by_id = {}
+    if all_evidence_ids:
+        stmt_ev = select(EvidenceItem).where(EvidenceItem.id.in_(all_evidence_ids))
+        all_evidence_items = (await db.execute(stmt_ev)).scalars().all()
+        evidence_items_by_id = {ev.id: ev for ev in all_evidence_items}
+
+    from app.services.prompt_generator import get_matching_skill_and_domain
+    
     enriched = []
     for card in cards:
-        # Load associated gap cluster
-        stmt_cluster = select(GapCluster).where(GapCluster.id == card.gap_cluster_id)
-        cluster = (await db.execute(stmt_cluster)).scalar_one_or_none()
+        cluster = card.gap_cluster
         if not cluster:
             continue
+            
+        company_obj = card.company
+        if not company_obj:
+            continue
 
-        # Load fixability flags
-        stmt_flag = select(FixabilityFlag).where(
-            FixabilityFlag.id == card.fixability_flag_id
-        )
-        flag = (await db.execute(stmt_flag)).scalar_one_or_none()
+        flag = card.fixability_flag
 
-        # Load role match and job posting
         role_match_detail = None
-        if card.role_match_id:
-            stmt_role = select(RoleMatch).where(RoleMatch.id == card.role_match_id)
-            role_match = (await db.execute(stmt_role)).scalar_one_or_none()
-            if role_match:
-                stmt_job = select(JobPosting).where(
-                    JobPosting.id == role_match.job_posting_id
-                )
-                job = (await db.execute(stmt_job)).scalar_one_or_none()
-                if job:
-                    role_match_detail = {
-                        "job_posting": {
-                            "id": str(job.id),
-                            "company_id": str(job.company_id),
-                            "title": job.title,
-                            "raw_text": job.raw_text,
-                            "posted_at": job.posted_at.isoformat() if job.posted_at else None,
-                            "is_open": job.is_open,
-                        },
-                        "match_score": role_match.match_score,
-                    }
+        if card.role_match and card.role_match.job_posting:
+            job = card.role_match.job_posting
+            role_match_detail = {
+                "job_posting": {
+                    "id": str(job.id),
+                    "company_id": str(job.company_id),
+                    "title": job.title,
+                    "raw_text": job.raw_text,
+                    "posted_at": job.posted_at.isoformat() if job.posted_at else None,
+                    "is_open": job.is_open,
+                },
+                "match_score": card.role_match.match_score,
+            }
 
-        # Load evidence items
         evidence_details = []
         if cluster.evidence_item_ids:
-            stmt_ev = select(EvidenceItem).where(
-                EvidenceItem.id.in_(cluster.evidence_item_ids)
-            )
-            evidence_items = (await db.execute(stmt_ev)).scalars().all()
-            for ev in evidence_items:
-                if ev.source_url and ev.source_url.strip():
+            for eid in cluster.evidence_item_ids:
+                ev = evidence_items_by_id.get(eid)
+                if ev and ev.source_url and ev.source_url.strip():
                     evidence_details.append(
                         {
                             "id": str(ev.id),
@@ -212,26 +227,9 @@ async def enrich_cards_for_user(
                         }
                     )
 
-        # CRITICAL constraint: No real clickable source_url = skip card
         if not evidence_details:
             continue
 
-        # Load company
-        stmt_company = select(Company).where(Company.id == card.company_id)
-        company_obj = (await db.execute(stmt_company)).scalar_one_or_none()
-        if not company_obj:
-            continue
-
-        # Load user profile to generate explanation
-        user_skills = []
-        user_domains = []
-        stmt_profile = select(UserProfile).where(UserProfile.user_id == user_uuid)
-        profile = (await db.execute(stmt_profile)).scalar_one_or_none()
-        if profile:
-            user_skills = profile.parsed_skills
-            user_domains = profile.parsed_domains
-
-        from app.services.prompt_generator import get_matching_skill_and_domain
         evidence_text_combined = " ".join(ev["raw_text"] for ev in evidence_details)
         matching_skill, gap_domain = get_matching_skill_and_domain(
             user_skills,
@@ -241,7 +239,6 @@ async def enrich_cards_for_user(
         )
         why_matches_you = f"You listed {matching_skill} — this gap involves {gap_domain}."
 
-        # Auto-update shown_at on retrieve
         if card.shown_at is None:
             card.shown_at = datetime.now(timezone.utc)
             db.add(card)
@@ -328,9 +325,9 @@ async def scan_company_root(
         company_name = extract_company_name_from_url(company_input)
 
     try:
-        company_url = validate_url(company_url)
+        company_url = await validate_url(company_url)
     except Exception as e:
-        pass
+        raise HTTPException(status_code=400, detail=str(e))
 
     # 2. Get or create Company
     stmt = select(Company).where(
@@ -362,7 +359,7 @@ async def scan_company_root(
         await scan_company(str(company.id), db, user_id=str(user_uuid))
     except Exception as e:
         logger.error("Pipeline scan failed: %s", e)
-        pass
+        raise HTTPException(status_code=500, detail="Pipeline scan failed")
 
     # 4. Enrich and return matched cards
     cards = await enrich_cards_for_user(user_uuid, db, company.id)

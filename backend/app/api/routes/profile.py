@@ -170,9 +170,10 @@ async def _run_parse_pipeline(
             detail=f"Resume parsing failed: {e}",
         )
 
+    import asyncio
     # Step 2: Local embedding (no API cost)
     embedder = get_embedder(settings.embedding_model)
-    embedding = embedder.embed_profile(parsed)
+    embedding = await asyncio.to_thread(embedder.embed_profile, parsed)
 
     # Step 3: Verify user exists
     user_result = await session.execute(select(User).where(User.id == user_id))
@@ -239,9 +240,14 @@ async def parse_resume_preview(
     Accepts either a file upload or raw_text form data.
     """
     if file:
-        file_bytes = await file.read()
+        file_bytes = bytearray()
+        while chunk := await file.read(1024 * 1024):
+            file_bytes.extend(chunk)
+            if len(file_bytes) > settings.max_file_size_mb * 1024 * 1024:
+                raise HTTPException(status_code=413, detail="File too large")
+        file_bytes = bytes(file_bytes)
         try:
-            extraction = extract_from_file(
+            extraction = await extract_from_file(
                 file_bytes=file_bytes,
                 content_type=file.content_type,
                 filename=file.filename,
@@ -290,9 +296,14 @@ async def parse_resume_file(
     uid = _validate_user_id(user_id)
 
     # Extract text from uploaded file (handles PDF + DOCX routing, size/type validation)
-    file_bytes = await file.read()
+    file_bytes_array = bytearray()
+    while chunk := await file.read(1024 * 1024):
+        file_bytes_array.extend(chunk)
+        if len(file_bytes_array) > settings.max_file_size_mb * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="File too large")
+    file_bytes = bytes(file_bytes_array)
     try:
-        extraction = extract_from_file(
+        extraction = await extract_from_file(
             file_bytes=file_bytes,
             content_type=file.content_type,
             filename=file.filename,

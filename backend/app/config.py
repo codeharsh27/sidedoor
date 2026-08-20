@@ -1,6 +1,6 @@
 """SideDoor backend application configuration."""
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings
 
 
@@ -24,6 +24,12 @@ class Settings(BaseSettings):
     llm_provider: str = "gemini"
     gemini_api_key: str = ""
     openrouter_api_key: str = ""
+
+    @model_validator(mode="after")
+    def check_api_keys(self) -> "Settings":
+        if not self.gemini_api_key and not self.openrouter_api_key:
+            raise ValueError("At least one LLM API key (gemini_api_key or openrouter_api_key) must be configured")
+        return self
 
     # Embedding model (local, no API key needed)
     embedding_model: str = "all-MiniLM-L6-v2"

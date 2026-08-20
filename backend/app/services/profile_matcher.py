@@ -144,20 +144,53 @@ async def match_profile_and_write_cards(
 
     for cluster, sim, combined_score, flag, best_role_match in top_matches:
         fit_tier_input = "strong" if sim >= 0.6 else "stretch"
+        role_match_id = best_role_match.id if best_role_match else None
         
+        # Check if Card already exists to see if we need LLM generation
+        stmt_existing = select(Card).where(Card.user_id == user_id, Card.gap_cluster_id == cluster.id)
+        res_existing = await db.execute(stmt_existing)
+        existing_card = res_existing.scalar_one_or_none()
+
+        needs_generation = not existing_card or not existing_card.gap_description or not existing_card.matching_reasoning
+        llm_result = None
+
+        if needs_generation:
+            logger.info("Generating card content via LLM for cluster %s", cluster.id)
+            # Fetch evidence items
+            stmt_ev = select(EvidenceItem).where(EvidenceItem.id.in_(cluster.evidence_item_ids))
+            res_ev = await db.execute(stmt_ev)
+            items = res_ev.scalars().all()
+            
+            evidence_dicts = [
+                {"url": item.source_url, "posted_at": str(item.posted_at), "raw_text": item.raw_text} 
+                for item in items
+            ]
+            
+            generator = CardGenerator()
+            try:
+                user_skills = getattr(profile, 'parsed_skills', getattr(profile, 'skills', []))
+                user_domains = getattr(profile, 'parsed_domains', getattr(profile, 'domains', []))
+
+                llm_result = await generator.generate_card(
+                    cluster_label=cluster.label,
+                    evidence_items=evidence_dicts,
+                    user_skills=user_skills,
+                    user_domains=user_domains,
+                    fit_tier_input=fit_tier_input
+                )
+            except Exception as gen_err:
+                logger.error("LLM card generation failed for cluster %s: %s", cluster.id, gen_err)
+
         try:
             async with db.begin_nested():
-                # Check if Card already exists for this user and cluster
+                # Re-fetch card in case it was created concurrently
                 stmt_existing = select(Card).where(
                     Card.user_id == user_id, Card.gap_cluster_id == cluster.id
                 )
                 res_existing = await db.execute(stmt_existing)
                 card = res_existing.scalar_one_or_none()
 
-                role_match_id = best_role_match.id if best_role_match else None
-
                 if card:
-                    # Update fields, preserving status and shown_at
                     card.profile_match_score = sim
                     card.fixability_flag_id = flag.id
                     card.role_match_id = role_match_id
@@ -176,38 +209,14 @@ async def match_profile_and_write_cards(
                     )
                     db.add(card)
 
-                # Determine if we need to call LLM for card generation
-                needs_generation = not card.gap_description or not card.matching_reasoning
-
                 if needs_generation:
-                    logger.info("Generating card content via LLM for cluster %s", cluster.id)
-                    # Fetch evidence items
-                    stmt_ev = select(EvidenceItem).where(EvidenceItem.id.in_(cluster.evidence_item_ids))
-                    res_ev = await db.execute(stmt_ev)
-                    items = res_ev.scalars().all()
-                    
-                    evidence_dicts = [
-                        {"url": item.source_url, "posted_at": str(item.posted_at), "raw_text": item.raw_text} 
-                        for item in items
-                    ]
-                    
-                    generator = CardGenerator()
-                    try:
-                        llm_result = await generator.generate_card(
-                            cluster_label=cluster.label,
-                            evidence_items=evidence_dicts,
-                            user_skills=profile.parsed_skills,
-                            user_domains=profile.parsed_domains,
-                            fit_tier_input=fit_tier_input
-                        )
+                    if llm_result:
                         card.gap_description = llm_result.gap_description
                         card.matching_reasoning = llm_result.matching_reasoning
                         card.source_urls = [s.url for s in llm_result.sources]
                         card.fit_tier = llm_result.fit_tier
                         card.bridge_note = llm_result.bridge_note
-                    except Exception as gen_err:
-                        logger.error("LLM card generation failed for cluster %s: %s", cluster.id, gen_err)
-                        # Ensure we don't save half-baked state if it failed completely
+                    else:
                         card.gap_description = "Error generating description."
                         card.matching_reasoning = "Error generating reasoning."
                         card.source_urls = []

@@ -39,6 +39,8 @@ class User(Base):
         server_default=text("gen_random_uuid()"),
     )
     email: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    password_hash: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
@@ -117,7 +119,7 @@ class Company(Base):
         server_default=text("gen_random_uuid()"),
     )
     name: Mapped[str] = mapped_column(Text, nullable=False)
-    url: Mapped[str] = mapped_column(Text, nullable=False)
+    url: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
     github_repo_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     careers_page_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     ats_slug: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -154,6 +156,7 @@ class EvidenceItem(Base):
         UUID(as_uuid=True),
         ForeignKey("companies.id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
     )
     source_type: Mapped[str] = mapped_column(Text, nullable=False)  # "hacker_news" | "reddit" | "github_issue" | "x_post" | "job_posting"
     source_url: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
@@ -189,6 +192,7 @@ class JobPosting(Base):
         UUID(as_uuid=True),
         ForeignKey("companies.id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
     )
     title: Mapped[str] = mapped_column(Text, nullable=False)
     raw_text: Mapped[str] = mapped_column(Text, nullable=False)

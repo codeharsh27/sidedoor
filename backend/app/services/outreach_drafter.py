@@ -1,4 +1,4 @@
-﻿"""
+"""
 Stage 6 Outreach Drafter Service — zero-LLM scaffold template generation.
 
 Generates a ready-to-adapt outreach message scaffold for a given (card, user) pair.
@@ -52,7 +52,7 @@ Subject: [TODO: fill in — keep it \u226460 chars]
 
 Hi [TODO: contact name or "team"],
 
-I\u2019ve been using {company_name} and noticed that \u201c{cluster_label}\u201d keeps coming up as a pain point in the community (e.g. \u201c{top_evidence_quote_truncated}\u201d).
+I\u2019ve been using {company_name} and noticed that \u201c{cluster_label}\u201d keeps coming up as a pain point in the community.
 
 I built a small proof-of-concept that addresses this:
   [TODO: paste your live demo / GitHub link here]
@@ -66,7 +66,13 @@ I\u2019m targeting {role_title} roles and would love 15 minutes to show you what
 [TODO: your GitHub / portfolio link]
 
 ---
-Evidence sources used in research:
+Research Summary:
+- Total Evidence Items: {evidence_count}
+- Channels Analyzed: {source_channels}
+- Date Range: {date_range}
+- Top Quote: "{top_evidence_quote_truncated}"
+
+Evidence sources:
 {evidence_source_list}"""
 
 _TEMPLATE_B = """\
@@ -84,7 +90,13 @@ I\u2019m targeting {role_title} roles and have relevant experience in {top_match
 [TODO: your GitHub / portfolio link]
 
 ---
-Evidence sources used in research:
+Research Summary:
+- Total Evidence Items: {evidence_count}
+- Channels Analyzed: {source_channels}
+- Date Range: {date_range}
+- Top Quote: "{top_evidence_quote_truncated}"
+
+Evidence sources:
 {evidence_source_list}"""
 
 
@@ -190,6 +202,23 @@ async def generate_outreach_draft(
     # 10. Choose template variant
     template = _TEMPLATE_A if card.status == "selected" else _TEMPLATE_B
 
+    evidence_count = getattr(cluster, 'evidence_count', len(cluster.evidence_item_ids) if cluster.evidence_item_ids else 0)
+    
+    source_channels = "N/A"
+    date_range = "N/A"
+    
+    if evidence_items:
+        channels = set(item.source_type for item in evidence_items if item.source_type)
+        if channels:
+            source_channels = ", ".join(sorted(channels))
+        
+        dates = sorted([str(item.posted_at)[:10] for item in evidence_items if item.posted_at])
+        if dates:
+            if len(dates) > 1:
+                date_range = f"{dates[0]} to {dates[-1]}"
+            else:
+                date_range = dates[0]
+
     # 11. Fill template variables
     draft_text = template.format(
         company_name=company_name,
@@ -198,33 +227,25 @@ async def generate_outreach_draft(
         role_title=role_title,
         top_matching_skill=top_matching_skill,
         evidence_source_list=evidence_source_list,
+        evidence_count=evidence_count,
+        source_channels=source_channels,
+        date_range=date_range
     )
 
     # 12. Upsert outreach_drafts row
     now = datetime.now(timezone.utc)
-    existing_draft_id: uuid.UUID | None = None
-
-    stmt_existing = select(OutreachDraft).where(
-        OutreachDraft.card_id == card_id,
-        OutreachDraft.user_id == user_id,
-    )
-    existing = (await db.execute(stmt_existing)).scalar_one_or_none()
-
-    if existing:
-        existing.draft_text = draft_text
-        existing.updated_at = now
-        db.add(existing)
-        await db.flush()
-        return existing
-
-    # New row
-    new_draft = OutreachDraft(
+    
+    stmt = pg_insert(OutreachDraft).values(
         card_id=card_id,
         user_id=user_id,
         draft_text=draft_text,
         created_at=now,
         updated_at=now,
-    )
-    db.add(new_draft)
+    ).on_conflict_do_update(
+        index_elements=["card_id", "user_id"],
+        set_={"draft_text": draft_text, "updated_at": now}
+    ).returning(OutreachDraft)
+    
+    result = await db.execute(stmt)
     await db.flush()
-    return new_draft
+    return result.scalar_one()

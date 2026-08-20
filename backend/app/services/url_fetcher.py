@@ -108,34 +108,10 @@ def _extract_text_from_html(html: str) -> str:
 
 
 async def fetch_and_extract_url(url: str) -> str:
-    """
-    Fetch a URL and extract readable text content.
-
-    Full pipeline:
-    1. Validate URL (scheme, SSRF check)
-    2. Fetch with timeouts and size limits
-    3. Extract text (HTML → readable text, or plain text passthrough)
-    4. Validate minimum content threshold
-
-    Args:
-        url: Portfolio/resume URL to fetch.
-
-    Returns:
-        Extracted text content from the URL.
-
-    Raises:
-        InvalidURLError: If the URL is malformed or uses a forbidden scheme.
-        SSRFBlockedError: If the URL resolves to a private IP.
-        FetchTimeoutError: If the request times out.
-        ContentTooLargeError: If the response exceeds the size limit.
-        HTMLExtractionError: If text extraction from HTML fails.
-        URLFetchError: For other fetch failures.
-    """
     # Step 1: Validate URL (includes SSRF check)
-    validated_url = validate_url(url)
-    logger.info("Fetching portfolio URL: %s", validated_url[:100])
+    current_url = validate_url(url)
+    logger.info("Fetching portfolio URL: %s", current_url[:100])
 
-    # Step 2: Fetch with security constraints
     timeout = httpx.Timeout(
         connect=URL_FETCH_TIMEOUT_CONNECT,
         read=URL_FETCH_TIMEOUT_TOTAL,
@@ -143,78 +119,90 @@ async def fetch_and_extract_url(url: str) -> str:
         pool=URL_FETCH_TIMEOUT_TOTAL,
     )
 
+    redirects_followed = 0
+    raw_bytes = b""
+    content_type = ""
+
     try:
         async with httpx.AsyncClient(
             timeout=timeout,
-            max_redirects=MAX_REDIRECTS,
-            follow_redirects=True,
+            follow_redirects=False,
             headers={"User-Agent": _USER_AGENT},
         ) as client:
-            response = await client.get(validated_url)
-            response.raise_for_status()
+            while True:
+                async with client.stream("GET", current_url) as response:
+                    if 300 <= response.status_code < 400:
+                        redirects_followed += 1
+                        if redirects_followed > MAX_REDIRECTS:
+                            raise URLFetchError(f"Too many redirects (limit: {MAX_REDIRECTS})")
+                        location = response.headers.get("location")
+                        if not location:
+                            raise URLFetchError("Redirect missing Location header")
+                        # Join with base url
+                        from urllib.parse import urljoin
+                        current_url = urljoin(current_url, location)
+                        # Re-validate the redirect target for SSRF
+                        current_url = validate_url(current_url)
+                        continue
 
+                    response.raise_for_status()
+                    content_type = response.headers.get("content-type", "").lower()
+                    
+                    # Prevent UnicodeDecodeError on binary files before we read them
+                    if not any(t in content_type for t in ["text/", "application/xhtml", "application/json", "application/xml"]):
+                        raise URLFetchError(f"Unsupported content type: {content_type}")
+
+                    bytes_read = 0
+                    chunks = []
+                    async for chunk in response.aiter_bytes():
+                        bytes_read += len(chunk)
+                        if bytes_read > MAX_URL_RESPONSE_BYTES:
+                            max_mb = MAX_URL_RESPONSE_BYTES / (1024 * 1024)
+                            raise ContentTooLargeError(
+                                f"Response too large ({bytes_read / (1024 * 1024):.1f}MB). "
+                                f"Maximum: {max_mb:.0f}MB."
+                            )
+                        chunks.append(chunk)
+                    
+                    raw_bytes = b"".join(chunks)
+                    break
     except httpx.TimeoutException as e:
-        raise FetchTimeoutError(
-            f"Timed out fetching URL (limit: {URL_FETCH_TIMEOUT_TOTAL}s): {e}"
-        ) from e
-    except httpx.TooManyRedirects as e:
-        raise URLFetchError(
-            f"Too many redirects (limit: {MAX_REDIRECTS}): {e}"
-        ) from e
+        raise FetchTimeoutError(f"Timed out fetching URL: {e}") from e
     except (InvalidURLError, SSRFBlockedError):
-        # Re-raise our own security errors unchanged
         raise
     except httpx.HTTPStatusError as e:
-        raise URLFetchError(
-            f"URL returned HTTP {e.response.status_code}: {e}"
-        ) from e
+        raise URLFetchError(f"URL returned HTTP {e.response.status_code}: {e}") from e
     except Exception as e:
+        if isinstance(e, URLFetchError):
+            raise
         raise URLFetchError(f"Failed to fetch URL: {e}") from e
 
-    # Step 3: Check response size
-    content_length = len(response.content)
-    if content_length > MAX_URL_RESPONSE_BYTES:
-        max_mb = MAX_URL_RESPONSE_BYTES / (1024 * 1024)
-        raise ContentTooLargeError(
-            f"Response too large ({content_length / (1024 * 1024):.1f}MB). "
-            f"Maximum: {max_mb:.0f}MB."
-        )
-
-    # Step 4: Extract text based on content type
-    content_type = response.headers.get("content-type", "")
-    raw_content = response.text
+    try:
+        raw_content = raw_bytes.decode("utf-8")
+    except UnicodeDecodeError as e:
+        raise URLFetchError(f"Failed to decode content as UTF-8: {e}") from e
 
     if not raw_content or not raw_content.strip():
         raise URLFetchError("URL returned empty content.")
 
     if "text/html" in content_type or "application/xhtml" in content_type:
         text = _extract_text_from_html(raw_content)
-    elif "text/plain" in content_type:
-        text = raw_content.strip()
-    elif "application/json" in content_type:
-        # JSON pages (e.g., GitHub API) — extract as-is, the LLM can parse it
+    elif "text/plain" in content_type or "application/json" in content_type or "application/xml" in content_type:
         text = raw_content.strip()
     else:
-        # Try HTML extraction as fallback (many pages don't set correct content-type)
         try:
             text = _extract_text_from_html(raw_content)
         except HTMLExtractionError:
             text = raw_content.strip()
 
-    # Cap text length to prevent excessive LLM input
     if len(text) > 50_000:
         text = text[:50_000]
         logger.warning("Truncated URL content from %d to 50,000 chars", len(raw_content))
 
-    # Step 5: Validate minimum content
     try:
         text = validate_extracted_text(text, f"URL '{url[:80]}'")
     except Exception as e:
         raise URLFetchError(str(e)) from e
 
-    logger.info(
-        "Extracted %d characters from URL (content-type: %s)",
-        len(text),
-        content_type[:50],
-    )
+    logger.info("Extracted %d characters from URL (content-type: %s)", len(text), content_type[:50])
     return text

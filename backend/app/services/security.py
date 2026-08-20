@@ -121,7 +121,7 @@ def is_private_ip(ip_str: str) -> bool:
     return False
 
 
-def resolve_and_check_host(hostname: str) -> str:
+async def resolve_and_check_host(hostname: str) -> str:
     """
     Resolve a hostname to IP and verify it's not private.
 
@@ -139,9 +139,10 @@ def resolve_and_check_host(hostname: str) -> str:
         SSRFBlockedError: If the hostname resolves to a private IP.
         InvalidURLError: If DNS resolution fails.
     """
+    import asyncio
     try:
         # Resolve all addresses (IPv4 and IPv6)
-        addr_infos = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC)
+        addr_infos = await asyncio.to_thread(socket.getaddrinfo, hostname, None, socket.AF_UNSPEC)
     except socket.gaierror as e:
         raise InvalidURLError(f"Cannot resolve hostname '{hostname}': {e}") from e
 
@@ -160,7 +161,7 @@ def resolve_and_check_host(hostname: str) -> str:
     return addr_infos[0][4][0]
 
 
-def validate_url(url: str) -> str:
+async def validate_url(url: str) -> str:
     """
     Validate and sanitize a URL for safe fetching.
 
@@ -210,7 +211,7 @@ def validate_url(url: str) -> str:
         )
 
     # SSRF check — resolve DNS and verify the IP isn't private
-    resolve_and_check_host(hostname)
+    await resolve_and_check_host(hostname)
 
     logger.info("URL validated: %s", url[:100])
     return url
@@ -235,35 +236,50 @@ def validate_file_size(size_bytes: int) -> None:
 
 
 def validate_file_content_type(
-    content_type: str | None, filename: str | None
+    content_type: str | None, filename: str | None, file_bytes: bytes | None = None
 ) -> None:
     """
-    Validate that a file has an allowed content type or extension.
+    Validate that a file has an allowed content type or extension,
+    and verify magic bytes if file_bytes is provided.
 
-    Uses both content-type header and filename extension for defense in depth.
+    Uses content-type header, filename extension, and magic bytes for defense in depth.
 
     Args:
         content_type: MIME type from the upload header (may be None/unreliable).
         filename: Original filename (may be None).
+        file_bytes: Raw bytes of the uploaded file (may be None).
 
     Raises:
-        UnsupportedFileTypeError: If neither content type nor extension is allowed.
+        UnsupportedFileTypeError: If neither content type nor extension is allowed, or magic bytes mismatch.
     """
-    # Check content type if provided
-    if content_type and content_type in ALLOWED_FILE_CONTENT_TYPES:
-        return
+    is_pdf = False
+    is_docx = False
 
-    # Fall back to extension check
+    if content_type:
+        if content_type == "application/pdf":
+            is_pdf = True
+        elif content_type in ALLOWED_FILE_CONTENT_TYPES:
+            is_docx = True
+
     if filename:
         ext = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
-        if ext in ALLOWED_FILE_EXTENSIONS:
-            return
+        if ext == ".pdf":
+            is_pdf = True
+        elif ext in ALLOWED_FILE_EXTENSIONS:
+            is_docx = True
 
-    allowed = ", ".join(sorted(ALLOWED_FILE_EXTENSIONS))
-    raise UnsupportedFileTypeError(
-        f"Unsupported file type. Allowed formats: {allowed}. "
-        f"Got content_type='{content_type}', filename='{filename}'."
-    )
+    if not is_pdf and not is_docx:
+        allowed = ", ".join(sorted(ALLOWED_FILE_EXTENSIONS))
+        raise UnsupportedFileTypeError(
+            f"Unsupported file type. Allowed formats: {allowed}. "
+            f"Got content_type='{content_type}', filename='{filename}'."
+        )
+
+    if file_bytes is not None:
+        if is_pdf and not file_bytes.startswith(b"%PDF-"):
+            raise UnsupportedFileTypeError("Invalid PDF file: missing magic bytes.")
+        if is_docx and not file_bytes.startswith(b"PK\x03\x04") and not file_bytes.startswith(b"\xd0\xcf\x11\xe0"): # support older doc files too
+            raise UnsupportedFileTypeError("Invalid DOCX/DOC file: missing magic bytes.")
 
 
 def validate_text_input(text: str) -> str:

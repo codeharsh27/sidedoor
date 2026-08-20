@@ -99,6 +99,9 @@ def _item_recency_score(posted_at: datetime | None, decay_days: int) -> float:
     if posted_at.tzinfo is None:
         posted_at = posted_at.replace(tzinfo=timezone.utc)
 
+    if decay_days == 0:
+        return 0.5  # Neutral fallback when decay is disabled
+        
     age_days = (now - posted_at).total_seconds() / 86400.0
     return min(1.0, max(0.0, 1.0 - age_days / decay_days))
 
