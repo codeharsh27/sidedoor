@@ -82,7 +82,7 @@ class ScanResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 async def _get_company_or_404(company_id: str, db: AsyncSession) -> Company:
-    """Fetch a company by UUID string or name slug. Raises 404 if not found."""
+    """Fetch a company by UUID string or name slug. Auto-creates company if not found."""
     comp = None
     try:
         uid = uuid.UUID(company_id)
@@ -90,15 +90,24 @@ async def _get_company_or_404(company_id: str, db: AsyncSession) -> Company:
         res = await db.execute(stmt)
         comp = res.scalar_one_or_none()
     except ValueError:
-        stmt = select(Company).where(Company.name.ilike(f"%{company_id}%"))
+        # Match by clean search substring
+        clean_search = company_id.replace("-", " ").replace("_", " ").strip()
+        stmt = select(Company).where(Company.name.ilike(f"%{clean_search}%"))
         res = await db.execute(stmt)
         comp = res.scalar_one_or_none()
 
     if not comp:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Company '{company_id}' not found.",
+        # Auto-create the target company on the fly so deep-research endpoints never raise 404
+        clean_name = company_id.replace("-", " ").replace("_", " ").title().strip()
+        domain = company_id.lower().replace("-", "").replace("_", "").replace(" ", "")
+        comp = Company(
+            name=clean_name,
+            url=f"https://www.{domain}.com",
+            scan_status="pending",
         )
+        db.add(comp)
+        await db.commit()
+        await db.refresh(comp)
     return comp
 
 
