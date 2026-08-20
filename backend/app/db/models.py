@@ -137,6 +137,9 @@ class Company(Base):
     job_postings: Mapped[list["JobPosting"]] = relationship(
         back_populates="company", cascade="all, delete-orphan", passive_deletes=True
     )
+    dossier_cache: Mapped[list["DossierCache"]] = relationship(
+        back_populates="company", cascade="all, delete-orphan", passive_deletes=True
+    )
 
 
 class EvidenceItem(Base):
@@ -205,3 +208,42 @@ class JobPosting(Base):
 
     # Relationships
     company: Mapped["Company"] = relationship(back_populates="job_postings")
+
+
+class DossierCache(Base):
+    """
+    dossier_cache table — stores per-module deep research results.
+
+    Each row represents one module's computed output for one company,
+    cached for 24 hours to avoid redundant LLM + API calls.
+    Modules: "identity" | "competitors" | "complaints" | "stealth_gap" | "alignment"
+    """
+
+    __tablename__ = "dossier_cache"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    module: Mapped[str] = mapped_column(Text, nullable=False)
+    result_json: Mapped[str] = mapped_column(Text, nullable=False)
+    computed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        server_default=text("now()"),
+    )
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+
+    # Relationships
+    company: Mapped["Company"] = relationship(back_populates="dossier_cache")

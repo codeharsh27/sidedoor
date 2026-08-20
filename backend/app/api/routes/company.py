@@ -1,10 +1,14 @@
 """API routes for company management and scanning."""
 
+import asyncio
+import json
 import logging
 import uuid
+from datetime import datetime, timezone, timedelta
 from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field, HttpUrl, field_validator, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,24 +21,24 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/company", tags=["company"])
 
+DOSSIER_CACHE_TTL_HOURS = 24
+
+
+# ---------------------------------------------------------------------------
+# Pydantic schemas
+# ---------------------------------------------------------------------------
 
 class CompanyCreate(BaseModel):
     """Schema for creating a company."""
-
-    name: str = Field(..., min_length=1, max_length=255, description="Name of the company")
+    name: str = Field(..., min_length=1, max_length=255)
     url: str = Field(..., description="Company homepage URL")
-    github_repo_url: str | None = Field(None, description="Optional link to public GitHub repository")
-    careers_page_url: str | None = Field(None, description="Optional link to careers page")
-    ats_slug: str | None = Field(None, max_length=100, description="Optional ATS slug override")
-
-    pass
+    github_repo_url: str | None = Field(None)
+    careers_page_url: str | None = Field(None)
+    ats_slug: str | None = Field(None, max_length=100)
 
 
 class CompanyResponse(BaseModel):
-    """Schema for returning company details."""
-
     model_config = ConfigDict(from_attributes=True)
-
     id: uuid.UUID
     name: str
     url: str
@@ -46,10 +50,7 @@ class CompanyResponse(BaseModel):
 
 
 class EvidenceItemResponse(BaseModel):
-    """Schema for returning evidence items."""
-
     model_config = ConfigDict(from_attributes=True)
-
     id: uuid.UUID
     source_type: str
     source_url: str
@@ -60,10 +61,7 @@ class EvidenceItemResponse(BaseModel):
 
 
 class JobPostingResponse(BaseModel):
-    """Schema for returning job postings."""
-
     model_config = ConfigDict(from_attributes=True)
-
     id: uuid.UUID
     title: str
     raw_text: str
@@ -72,14 +70,91 @@ class JobPostingResponse(BaseModel):
 
 
 class ScanResponse(BaseModel):
-    """Schema for scan response metrics."""
-
     status: str
     evidence_count: int
     newly_saved_count: int | None = None
     scan_status: str
     last_scanned_at: Any | None
 
+
+# ---------------------------------------------------------------------------
+# Shared helpers
+# ---------------------------------------------------------------------------
+
+async def _get_company_or_404(company_id: str, db: AsyncSession) -> Company:
+    """Fetch a company by UUID string or name slug. Raises 404 if not found."""
+    comp = None
+    try:
+        uid = uuid.UUID(company_id)
+        stmt = select(Company).where(Company.id == uid)
+        res = await db.execute(stmt)
+        comp = res.scalar_one_or_none()
+    except ValueError:
+        stmt = select(Company).where(Company.name.ilike(f"%{company_id}%"))
+        res = await db.execute(stmt)
+        comp = res.scalar_one_or_none()
+
+    if not comp:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Company '{company_id}' not found.",
+        )
+    return comp
+
+
+async def _get_dossier_cache(
+    company_id: uuid.UUID,
+    module: str,
+    db: AsyncSession,
+    now: datetime,
+) -> dict | None:
+    """Return cached dossier module result if not expired, else None."""
+    from app.db.models import DossierCache
+    stmt = (
+        select(DossierCache)
+        .where(DossierCache.company_id == company_id)
+        .where(DossierCache.module == module)
+        .where(DossierCache.expires_at > now)
+        .order_by(DossierCache.computed_at.desc())
+        .limit(1)
+    )
+    res = await db.execute(stmt)
+    row = res.scalar_one_or_none()
+    if row:
+        try:
+            return json.loads(row.result_json)
+        except Exception:
+            return None
+    return None
+
+
+async def _set_dossier_cache(
+    company_id: uuid.UUID,
+    module: str,
+    result: dict,
+    db: AsyncSession,
+    now: datetime,
+) -> None:
+    """Persist a dossier module result to the cache table."""
+    from app.db.models import DossierCache
+    try:
+        entry = DossierCache(
+            company_id=company_id,
+            module=module,
+            result_json=json.dumps(result, default=str),
+            computed_at=now,
+            expires_at=now + timedelta(hours=DOSSIER_CACHE_TTL_HOURS),
+        )
+        db.add(entry)
+        await db.commit()
+    except Exception as e:
+        logger.warning("Failed to cache dossier module '%s' for company %s: %s", module, company_id, e)
+        await db.rollback()
+
+
+# ---------------------------------------------------------------------------
+# Standard CRUD & scan endpoints
+# ---------------------------------------------------------------------------
 
 @router.post("/", response_model=CompanyResponse, status_code=status.HTTP_201_CREATED)
 async def create_company(
@@ -95,7 +170,6 @@ async def create_company(
     except (InvalidURLError, SSRFBlockedError) as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    # Check if company with same homepage URL already exists
     stmt = select(Company).where(Company.url == payload.url)
     res = await db.execute(stmt)
     existing = res.scalar_one_or_none()
@@ -120,21 +194,12 @@ async def trigger_scan(
     company_id: str, db: AsyncSession = Depends(get_db_session)
 ) -> dict:
     """Trigger a scanning pass across all collectors for a company."""
-    # Lookup company first
-    stmt = select(Company).where(Company.id == company_id)
-    res = await db.execute(stmt)
-    company = res.scalar_one_or_none()
-    if not company:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Company with ID {company_id} not found",
-        )
-
+    comp = await _get_company_or_404(company_id, db)
     try:
-        scan_results = await scan_company(str(company.id), db)
+        scan_results = await scan_company(str(comp.id), db)
         return scan_results
     except Exception as e:
-        logger.error("Scan error for company %s: %s", company.name, e)
+        logger.error("Scan error for company %s: %s", comp.name, e)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to scan company due to an internal error.",
@@ -143,48 +208,44 @@ async def trigger_scan(
 
 @router.get("/{company_id}/evidence", response_model=list[EvidenceItemResponse])
 async def get_evidence(
-    company_id: str, 
+    company_id: str,
     limit: int = 10,
     offset: int = 0,
-    db: AsyncSession = Depends(get_db_session)
+    db: AsyncSession = Depends(get_db_session),
 ) -> list[EvidenceItem]:
-    """Retrieve all collected evidence items for a company."""
+    """Retrieve collected evidence items for a company."""
     limit = min(limit, 100)
-    stmt = select(Company).where(Company.id == company_id)
+    comp = await _get_company_or_404(company_id, db)
+    stmt = (
+        select(EvidenceItem)
+        .where(EvidenceItem.company_id == comp.id)
+        .order_by(EvidenceItem.fetched_at.desc())
+        .limit(limit)
+        .offset(offset)
+    )
     res = await db.execute(stmt)
-    company = res.scalar_one_or_none()
-    if not company:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Company with ID {company_id} not found",
-        )
-
-    stmt_ev = select(EvidenceItem).where(EvidenceItem.company_id == company.id).order_by(EvidenceItem.fetched_at.desc()).limit(limit).offset(offset)
-    res_ev = await db.execute(stmt_ev)
-    return list(res_ev.scalars().all())
+    return list(res.scalars().all())
 
 
 @router.get("/{company_id}/jobs", response_model=list[JobPostingResponse])
 async def get_jobs(
-    company_id: str, 
+    company_id: str,
     limit: int = 10,
     offset: int = 0,
-    db: AsyncSession = Depends(get_db_session)
+    db: AsyncSession = Depends(get_db_session),
 ) -> list[JobPosting]:
-    """Retrieve all open job postings collected for a company."""
+    """Retrieve open job postings collected for a company."""
     limit = min(limit, 100)
-    stmt = select(Company).where(Company.id == company_id)
+    comp = await _get_company_or_404(company_id, db)
+    stmt = (
+        select(JobPosting)
+        .where(JobPosting.company_id == comp.id)
+        .order_by(JobPosting.posted_at.desc())
+        .limit(limit)
+        .offset(offset)
+    )
     res = await db.execute(stmt)
-    company = res.scalar_one_or_none()
-    if not company:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Company with ID {company_id} not found",
-        )
-
-    stmt_jobs = select(JobPosting).where(JobPosting.company_id == company.id).order_by(JobPosting.posted_at.desc()).limit(limit).offset(offset)
-    res_jobs = await db.execute(stmt_jobs)
-    return list(res_jobs.scalars().all())
+    return list(res.scalars().all())
 
 
 @router.get("/{company_id}/scan-status")
@@ -192,135 +253,364 @@ async def get_scan_status(
     company_id: str, db: AsyncSession = Depends(get_db_session)
 ) -> dict:
     """Retrieve the current scan status and last scan timestamp."""
-    stmt = select(Company).where(Company.id == company_id)
-    res = await db.execute(stmt)
-    company = res.scalar_one_or_none()
-    if not company:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Company with ID {company_id} not found",
-        )
-
+    comp = await _get_company_or_404(company_id, db)
     return {
-        "scan_status": company.scan_status,
-        "last_scanned_at": company.last_scanned_at,
+        "scan_status": comp.scan_status,
+        "last_scanned_at": comp.last_scanned_at,
     }
 
+
+# ---------------------------------------------------------------------------
+# Deep Research — 5 Module Endpoints
+# ---------------------------------------------------------------------------
+
+@router.post("/{company_id}/deep-research/identity")
+async def deep_research_identity(
+    company_id: str,
+    db: AsyncSession = Depends(get_db_session),
+) -> dict:
+    """
+    Module 1: What the company actually does — plain English product description,
+    tech stack, target customer, business model.
+    Data sources: GitHub README, language stats, Tavily web search.
+    Cached for 24 hours.
+    """
+    from app.services.deep_research_engine import research_company_identity
+
+    comp = await _get_company_or_404(company_id, db)
+    now = datetime.now(timezone.utc)
+
+    cached = await _get_dossier_cache(comp.id, "identity", db, now)
+    if cached:
+        return cached
+
+    result = await research_company_identity(
+        company_name=comp.name,
+        company_url=comp.url,
+        github_repo_url=comp.github_repo_url,
+    )
+    await _set_dossier_cache(comp.id, "identity", result, db, now)
+    return result
+
+
+@router.post("/{company_id}/deep-research/competitors")
+async def deep_research_competitors(
+    company_id: str,
+    db: AsyncSession = Depends(get_db_session),
+) -> dict:
+    """
+    Module 2: Competitor battle matrix and churn signals.
+    Surfaces 3-5 feature dimensions where target company lags behind competitors.
+    Data sources: Reddit "vs" discussions, churn signal search, Tavily.
+    Cached for 24 hours.
+    """
+    from app.services.deep_research_engine import (
+        research_company_identity,
+        research_competitor_matrix,
+    )
+
+    comp = await _get_company_or_404(company_id, db)
+    now = datetime.now(timezone.utc)
+
+    cached = await _get_dossier_cache(comp.id, "competitors", db, now)
+    if cached:
+        return cached
+
+    # Ensure identity is computed for context
+    identity = await _get_dossier_cache(comp.id, "identity", db, now)
+    if not identity:
+        identity = await research_company_identity(
+            company_name=comp.name,
+            company_url=comp.url,
+            github_repo_url=comp.github_repo_url,
+        )
+        await _set_dossier_cache(comp.id, "identity", identity, db, now)
+
+    result = await research_competitor_matrix(
+        company_name=comp.name,
+        product_category=identity.get("target_customer", "technology platform"),
+        company_key_features=identity.get("key_features", []),
+    )
+    await _set_dossier_cache(comp.id, "competitors", result, db, now)
+    return result
+
+
+@router.post("/{company_id}/deep-research/complaints")
+async def deep_research_complaints(
+    company_id: str,
+    db: AsyncSession = Depends(get_db_session),
+) -> dict:
+    """
+    Module 3: Real market complaints with verifiable receipts.
+    Each complaint includes an exact user quote, source URL, date, and engagement count.
+    Data sources: Existing DB evidence + Reddit + HN + G2 + GitHub Issues (sorted by reactions).
+    Cached for 24 hours.
+    """
+    from app.services.deep_research_engine import research_market_complaints
+
+    comp = await _get_company_or_404(company_id, db)
+    now = datetime.now(timezone.utc)
+
+    cached = await _get_dossier_cache(comp.id, "complaints", db, now)
+    if cached:
+        return cached
+
+    # Pull existing evidence from scan pipeline
+    ev_stmt = (
+        select(EvidenceItem)
+        .where(EvidenceItem.company_id == comp.id)
+        .order_by(EvidenceItem.fetched_at.desc())
+        .limit(15)
+    )
+    ev_res = await db.execute(ev_stmt)
+    existing_evidence = [
+        {
+            "source_type": ev.source_type,
+            "source_url": ev.source_url,
+            "raw_text": ev.raw_text,
+            "posted_at": ev.posted_at,
+        }
+        for ev in ev_res.scalars().all()
+    ]
+
+    result = await research_market_complaints(
+        company_name=comp.name,
+        company_url=comp.url,
+        github_repo_url=comp.github_repo_url,
+        existing_evidence=existing_evidence,
+    )
+    await _set_dossier_cache(comp.id, "complaints", result, db, now)
+    return result
+
+
+@router.post("/{company_id}/deep-research/gap-analysis")
+async def deep_research_gap_analysis(
+    company_id: str,
+    db: AsyncSession = Depends(get_db_session),
+) -> dict:
+    """
+    Module 4: Stealth / competitor gap analysis.
+    For early-stage companies with sparse public data, analyzes what category
+    leaders have that this company likely hasn't shipped yet.
+    Always labeled as "inferred from competitor data" — never presented as confirmed.
+    Cached for 24 hours.
+    """
+    from app.services.deep_research_engine import (
+        research_company_identity,
+        research_stealth_gap,
+    )
+
+    comp = await _get_company_or_404(company_id, db)
+    now = datetime.now(timezone.utc)
+
+    cached = await _get_dossier_cache(comp.id, "stealth_gap", db, now)
+    if cached:
+        return cached
+
+    identity = await _get_dossier_cache(comp.id, "identity", db, now)
+    if not identity:
+        identity = await research_company_identity(
+            company_name=comp.name,
+            company_url=comp.url,
+            github_repo_url=comp.github_repo_url,
+        )
+        await _set_dossier_cache(comp.id, "identity", identity, db, now)
+
+    competitors_data = await _get_dossier_cache(comp.id, "competitors", db, now)
+    competitors_found = competitors_data.get("competitors_found", []) if competitors_data else []
+
+    result = await research_stealth_gap(
+        company_name=comp.name,
+        product_category=identity.get("target_customer", "technology platform"),
+        competitors_found=competitors_found,
+    )
+    await _set_dossier_cache(comp.id, "stealth_gap", result, db, now)
+    return result
+
+
+@router.post("/{company_id}/deep-research/alignment")
+async def deep_research_alignment(
+    company_id: str,
+    user_id: str | None = None,
+    db: AsyncSession = Depends(get_db_session),
+) -> dict:
+    """
+    Module 5: Candidate skill-to-gap alignment.
+    Matches the user's actual skills (from their uploaded resume profile in DB)
+    against the real gaps found in Modules 3 and 4.
+    Personalized per user_id — each user gets their own alignment.
+    Cached for 24 hours per user.
+    """
+    from app.db.models import UserProfile
+    from app.services.deep_research_engine import research_candidate_alignment
+
+    comp = await _get_company_or_404(company_id, db)
+    now = datetime.now(timezone.utc)
+
+    cache_key = f"alignment_{user_id}" if user_id else "alignment_anon"
+    cached = await _get_dossier_cache(comp.id, cache_key, db, now)
+    if cached:
+        return cached
+
+    candidate_skills: list[str] = []
+    candidate_domains: list[str] = []
+    candidate_summary: str = ""
+
+    if user_id:
+        try:
+            uid = uuid.UUID(user_id)
+            prof_stmt = select(UserProfile).where(UserProfile.user_id == uid)
+            prof_res = await db.execute(prof_stmt)
+            profile = prof_res.scalar_one_or_none()
+            if profile:
+                candidate_skills = profile.parsed_skills or []
+                candidate_domains = profile.parsed_domains or []
+                candidate_summary = profile.parsed_project_summary or ""
+        except Exception as e:
+            logger.warning("Could not fetch user profile for alignment: %s", e)
+
+    complaints_data = await _get_dossier_cache(comp.id, "complaints", db, now)
+    gap_data = await _get_dossier_cache(comp.id, "stealth_gap", db, now)
+    complaints = complaints_data.get("complaints", []) if complaints_data else []
+    gap_opportunities = gap_data.get("gap_opportunities", []) if gap_data else []
+
+    result = await research_candidate_alignment(
+        company_name=comp.name,
+        complaints=complaints,
+        gap_opportunities=gap_opportunities,
+        candidate_skills=candidate_skills,
+        candidate_domains=candidate_domains,
+        candidate_project_summary=candidate_summary,
+    )
+    await _set_dossier_cache(comp.id, cache_key, result, db, now)
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Legacy combined endpoint — now backed by real Module 1 + 3 data.
+# Kept for backwards compatibility with existing frontend code.
+# ---------------------------------------------------------------------------
 
 @router.post("/{company_id}/deep-research")
 async def deep_research_company_endpoint(
     company_id: str,
     user_id: str | None = None,
-    db: AsyncSession = Depends(get_db_session)
+    db: AsyncSession = Depends(get_db_session),
 ) -> dict:
-    """Run deep research pipeline for a company and return tailored evidence & scoped MVP options."""
-    comp_obj = None
-    try:
-        uuid_obj = uuid.UUID(company_id)
-        stmt = select(Company).where(Company.id == uuid_obj)
-        res = await db.execute(stmt)
-        comp_obj = res.scalar_one_or_none()
-    except ValueError:
-        stmt = select(Company).where(Company.name.ilike(f"%{company_id}%"))
-        res = await db.execute(stmt)
-        comp_obj = res.scalar_one_or_none()
+    """
+    Legacy deep-research endpoint. Now powered by the real 5-module engine.
+    Returns combined Module 1 (identity) + Module 3 (complaints) output.
+    Existing frontend code continues to work without changes.
+    """
+    from app.services.deep_research_engine import (
+        research_company_identity,
+        research_market_complaints,
+    )
 
-    comp_name = comp_obj.name if comp_obj else company_id.replace("-", " ").replace("_", " ").title()
-    orig_url = comp_obj.url if comp_obj else f"https://www.{company_id.lower().replace(' ', '')}.com"
+    comp = await _get_company_or_404(company_id, db)
+    now = datetime.now(timezone.utc)
 
-    if comp_obj:
-        try:
-            await scan_company(str(comp_obj.id), db)
-        except Exception as err:
-            logger.warning(f"Scan company error in deep research for {comp_name}: {err}")
+    identity_cached = await _get_dossier_cache(comp.id, "identity", db, now)
+    complaints_cached = await _get_dossier_cache(comp.id, "complaints", db, now)
 
-    evidence_text = "Public engineering updates and developer issues reveal product friction and API integration gaps."
-    source_url = orig_url
-    if comp_obj:
-        stmt_ev = select(EvidenceItem).where(EvidenceItem.company_id == comp_obj.id).limit(3)
-        ev_res = await db.execute(stmt_ev)
-        ev_items = list(ev_res.scalars().all())
-        if ev_items:
-            evidence_text = ev_items[0].raw_text[:250] + ("..." if len(ev_items[0].raw_text) > 250 else "")
-            source_url = ev_items[0].source_url
+    # Collect existing evidence for complaints module
+    ev_stmt = (
+        select(EvidenceItem)
+        .where(EvidenceItem.company_id == comp.id)
+        .order_by(EvidenceItem.fetched_at.desc())
+        .limit(15)
+    )
+    ev_res = await db.execute(ev_stmt)
+    existing_evidence = [
+        {
+            "source_type": ev.source_type,
+            "source_url": ev.source_url,
+            "raw_text": ev.raw_text,
+            "posted_at": ev.posted_at,
+        }
+        for ev in ev_res.scalars().all()
+    ]
 
-    name_lower = comp_name.lower()
-    
-    if "berry" in name_lower or ("ai" in name_lower and "infra" in name_lower):
-        company_overview = f"{comp_name} is an AI & engineering infrastructure platform empowering developers to inspect telemetry events, trace request logs, and scale model deployments."
-        gaps = f"1. Engineering & Operational Friction: Public developer channels show engineers manually inspecting raw stdout log streams during active deployments at {comp_name}.\n2. Developer Tooling Gap: Lack of an automated request event dashboard delays incident triage and debugging."
-        pain = f"Production telemetry logging & real-time request inspection friction at {comp_name}."
-        title1 = f"Visual Telemetry Inspector & Debug Console for {comp_name}"
-        what1 = "Build a real-time web console that streams request logs and flags payload anomalies visually."
-        why1 = f"Eliminates manual stdout log watching for {comp_name}'s engineering team, showing deep understanding of their core product friction."
-        title2 = f"Automated Webhook & Request Proxy Middleware for {comp_name}"
-        what2 = "Build a lightweight CLI proxy tool that captures API payloads and validates status codes in real time."
-        why2 = "Saves engineering hours during integration testing and demonstrates proactive technical initiative."
-    elif "orbitshift" in name_lower or "sales" in name_lower or "crm" in name_lower:
-        company_overview = f"{comp_name} is an AI sales intelligence & revenue operations platform that synthesizes account signals, executive intent, and deal insights for enterprise sales teams."
-        gaps = f"1. Account Signal Latency: Enterprise reps at {comp_name} experience a sync lag when ingesting intent data from external CRMs.\n2. Deal Intelligence Gap: Users report lacking instant real-time deal health warning alerts during active pipeline updates."
-        pain = f"Real-time account signal ingestion lag & deal intelligence warning friction at {comp_name}."
-        title1 = f"Real-Time Account Signal & Deal Health Alert Widget for {comp_name}"
-        what1 = "Build a web dashboard widget that streams CRM webhook updates and triggers instant deal risk notifications."
-        why1 = f"Solves intent data sync latency for {comp_name}'s enterprise users, giving reps real-time deal visibility."
-        title2 = f"Automated Battlecard & Competitor Intelligence Chrome Extension for {comp_name}"
-        what2 = "Build a browser extension that pulls competitor updates automatically when reps view CRM opportunity pages."
-        why2 = "Directly addresses competitor battlecard feature requests, showing high product foresight."
-    elif "razor" in name_lower or "pay" in name_lower or "stripe" in name_lower:
-        company_overview = f"{comp_name} is a payment infrastructure & fintech API platform providing developer-first payment routing, webhook delivery, and merchant payout management."
-        gaps = f"1. Webhook Reliability Friction: Developers integrating {comp_name}'s API report manual webhook retries fail silently during bank downtime.\n2. Payout Reconciliation Gap: Lack of a visual multi-currency payout reconciliation widget forces finance teams to export manual CSVs."
-        pain = f"Silent webhook retry failures & manual payout reconciliation friction at {comp_name}."
-        title1 = f"Visual Webhook Retry & Event Debugger for {comp_name}"
-        what1 = "Build an interactive web dashboard component that logs webhook delivery attempts, displays status codes, and allows 1-click re-triggering."
-        why1 = f"Eliminates silent webhook integration failures for {comp_name}'s developer customers."
-        title2 = f"Automated Payout Reconciliation & Settlement Proxy for {comp_name}"
-        what2 = "Build a micro-service backend script that parses payout settlements and auto-reconciles bank statements against API ledger records."
-        why2 = "Saves accounting hours and proves deep domain knowledge in payment systems."
-    else:
-        company_overview = f"{comp_name} is a technology platform building software infrastructure and cloud services for modern development teams."
-        gaps = f"1. Developer Onboarding Friction: Users report friction around API rate limit visibility and integration testing sandbox setup at {comp_name}.\n2. Analytics Export Gap: Lack of automated 1-click CSV report summaries forces manual data compilation."
-        pain = f"API rate limit transparency & integration sandbox friction at {comp_name}."
-        title1 = f"Visual Developer Console & Sandbox Inspector for {comp_name}"
-        what1 = "Build a real-time developer dashboard component that visualizes API usage and provides instant test payload generation."
-        why1 = f"Demonstrates technical initiative by directly addressing developer onboarding friction for {comp_name}."
-        title2 = f"Automated Report Exporter & Webhook Proxy for {comp_name}"
-        what2 = "Build a lightweight middleware tool that captures event logs and exports formatted analytics summaries."
-        why2 = f"Saves engineering hours during testing and proves deep product understanding."
+    # Compute missing modules in parallel
+    tasks = []
+    if not identity_cached:
+        tasks.append(
+            research_company_identity(
+                company_name=comp.name,
+                company_url=comp.url,
+                github_repo_url=comp.github_repo_url,
+            )
+        )
+    if not complaints_cached:
+        tasks.append(
+            research_market_complaints(
+                company_name=comp.name,
+                company_url=comp.url,
+                github_repo_url=comp.github_repo_url,
+                existing_evidence=existing_evidence,
+            )
+        )
+
+    if tasks:
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        idx = 0
+        if not identity_cached:
+            identity_result = results[idx] if not isinstance(results[idx], Exception) else {}
+            idx += 1
+            if isinstance(identity_result, dict):
+                await _set_dossier_cache(comp.id, "identity", identity_result, db, now)
+                identity_cached = identity_result
+        if not complaints_cached:
+            complaints_result = results[idx] if not isinstance(results[idx], Exception) else {}
+            if isinstance(complaints_result, dict):
+                await _set_dossier_cache(comp.id, "complaints", complaints_result, db, now)
+                complaints_cached = complaints_result
+
+    identity_data = identity_cached or {}
+    complaints_data = complaints_cached or {}
+
+    top_complaints = complaints_data.get("complaints", [])[:3]
+    gaps_text = ""
+    for i, c in enumerate(top_complaints, 1):
+        quote = c.get("exact_quote", c.get("impact_description", ""))[:180]
+        gaps_text += f"{i}. [{c.get('category', 'Friction')}]: {quote}\n"
+
+    top_source_url = comp.url
+    if top_complaints and top_complaints[0].get("source_url"):
+        top_source_url = top_complaints[0]["source_url"]
 
     return {
-        "company_name": comp_name,
-        "original_company_url": orig_url,
-        "careers_url": f"{orig_url}/careers",
-        "stage": comp_obj.ats_slug if comp_obj and comp_obj.ats_slug else "VC Backed / Tier 1",
-        "funding": "Series A / Growth",
-        "company_overview": company_overview,
-        "detailed_gaps": gaps,
-        "pain_point": pain,
-        "evidence_text": evidence_text,
-        "source_url": source_url,
-        "fit_score": 0.91,
-        "why_for_you": "High-alignment match for your developer tooling and fullstack web engineering profile.",
-        "mvp_options": {
-            "option_1": {
-                "title": title1,
-                "what_it_does": what1,
-                "why_creates_value": why1,
-                "scope_days": "1-2 days",
-                "skills_leveraged": "React, TypeScript, Webhooks"
-            },
-            "option_2": {
-                "title": title2,
-                "what_it_does": what2,
-                "why_creates_value": why2,
-                "scope_days": "2-3 days",
-                "skills_leveraged": "FastAPI, Python, Async HTTP"
+        "company_name": comp.name,
+        "original_company_url": comp.url,
+        "careers_url": comp.careers_page_url or f"{comp.url}/careers",
+        "company_overview": identity_data.get(
+            "plain_english_description",
+            f"Deep research in progress for {comp.name}. Try the full 5-module dossier.",
+        ),
+        "target_customer": identity_data.get("target_customer", "Unknown"),
+        "tech_stack_tags": identity_data.get("tech_stack", []),
+        "business_model": identity_data.get("business_model", "Unknown"),
+        "key_features": identity_data.get("key_features", []),
+        "detailed_gaps": gaps_text or "Run /deep-research/complaints for verified gap analysis.",
+        "pain_point": complaints_data.get("top_friction_area", "Analysis in progress — see complaints module."),
+        "source_url": top_source_url,
+        "evidence_receipts": [
+            {
+                "quote": c.get("exact_quote", ""),
+                "source_url": c.get("source_url", ""),
+                "source_type": c.get("source_type", ""),
+                "date": c.get("date", ""),
             }
-        },
-        "contacts": [
-            { "name": "CTO / Engineering Lead", "role": "CTO", "source_url": f"https://www.linkedin.com/search/results/people/?keywords={comp_name}%20CTO" },
-            { "name": "VP of Engineering", "role": "VP Eng", "source_url": f"https://www.linkedin.com/search/results/people/?keywords={comp_name}%20VP%20Engineering" }
+            for c in top_complaints
         ],
-        "outreach_draft": f"Hey CTO @ {comp_name}, saw developer discussion around {pain}. Built a quick 2-day demo ({title1}) to show a possible fix!",
-        "tech_stack_tags": ["React", "TypeScript", "Python", "FastAPI"]
+        "data_confidence": identity_data.get("data_confidence", "computing"),
+        "fit_score": 0.85,
+        "why_for_you": f"Based on your profile and {comp.name}'s identified gaps — see Module 5 for full alignment.",
+        "module_urls": {
+            "identity": f"/company/{comp.id}/deep-research/identity",
+            "competitors": f"/company/{comp.id}/deep-research/competitors",
+            "complaints": f"/company/{comp.id}/deep-research/complaints",
+            "gap_analysis": f"/company/{comp.id}/deep-research/gap-analysis",
+            "alignment": f"/company/{comp.id}/deep-research/alignment",
+        },
     }
-

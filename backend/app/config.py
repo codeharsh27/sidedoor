@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     twitter_bearer_token: str = ""
     reddit_client_id: str = ""
     reddit_client_secret: str = ""
+    tavily_api_key: str = ""
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 

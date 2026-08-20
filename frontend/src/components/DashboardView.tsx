@@ -1056,6 +1056,19 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ userProfile, supab
   // Persistent Pipeline Cache state for companies analyzed (Scoped per user)
   const [analyzedCompaniesCache, setAnalyzedCompaniesCache] = useState<Record<string, any>>({});
 
+  // 5-Module Dossier Navigation
+  const DOSSIER_MODULES = [
+    { key: 'identity',    label: 'Company Intelligence',    emoji: '🏢', endpoint: 'identity' },
+    { key: 'competitors', label: 'Competitor Matrix',       emoji: '⚔️', endpoint: 'competitors' },
+    { key: 'complaints',  label: 'Market Complaints',       emoji: '🔴', endpoint: 'complaints' },
+    { key: 'gap_analysis',label: 'Gap Analysis',            emoji: '⚡', endpoint: 'gap-analysis' },
+    { key: 'alignment',   label: 'Your Alignment',          emoji: '🎯', endpoint: 'alignment' },
+  ];
+  const [dossierModuleIndex, setDossierModuleIndex] = useState<number>(0);
+  const [dossierModuleData, setDossierModuleData] = useState<Record<string, any>>({});
+  const [isLoadingDossierModule, setIsLoadingDossierModule] = useState<boolean>(false);
+  const [currentCompanyId, setCurrentCompanyId] = useState<string | null>(null);
+
   useEffect(() => {
     if (!currentUserId) {
       setAnalyzedCompaniesCache({});
@@ -1482,11 +1495,58 @@ const generateDynamicResearchForCompany = (compName: string, companyItem: any) =
           mvp_options: resultObj.mvp_options || { option_1: { title: 'Visual Developer Console & Sandbox' } },
           source_url: resultObj.original_company_url || 'https://github.com'
         }, 'building');
+
+        // Reset dossier to Module 1 and store company id for module loading
+        setDossierModuleIndex(0);
+        setDossierModuleData({});
+        if (resultObj.module_urls) {
+          // Store company id from module_urls for later module fetches
+          const identityUrl: string = resultObj.module_urls?.identity || '';
+          const parts = identityUrl.split('/');
+          const compIdx = parts.findIndex((p: string) => p === 'company');
+          if (compIdx !== -1 && parts[compIdx + 1]) {
+            setCurrentCompanyId(parts[compIdx + 1]);
+          }
+        }
       }
     }
   };
 
+  // Load a specific dossier module from the backend
+  const loadDossierModule = async (moduleIndex: number, compId?: string) => {
+    const targetCompId = compId || currentCompanyId;
+    if (!targetCompId) return;
+    const module = DOSSIER_MODULES[moduleIndex];
+    if (!module) return;
+
+    // Return cached if already loaded
+    if (dossierModuleData[module.key]) {
+      setDossierModuleIndex(moduleIndex);
+      return;
+    }
+
+    setIsLoadingDossierModule(true);
+    try {
+      const BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || 'https://sidedoor.onrender.com';
+      const endpoint = module.key === 'alignment'
+        ? `${BASE_URL}/company/${targetCompId}/deep-research/${module.endpoint}${currentUserId ? `?user_id=${currentUserId}` : ''}`
+        : `${BASE_URL}/company/${targetCompId}/deep-research/${module.endpoint}`;
+
+      const resp = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+      if (resp.ok) {
+        const data = await resp.json();
+        setDossierModuleData(prev => ({ ...prev, [module.key]: data }));
+      }
+    } catch (err) {
+      console.warn('Dossier module fetch failed for', module.key, err);
+    } finally {
+      setIsLoadingDossierModule(false);
+      setDossierModuleIndex(moduleIndex);
+    }
+  };
+
   const getClaudePromptText = () => {
+
     if (!deepResearchResult) return '';
     const options = deepResearchResult.mvp_options || {};
     const selectedOption = selectedMvpOptionIndex === 0 ? (options.option_1 || deepResearchResult.artifact_brief) : (options.option_2 || deepResearchResult.artifact_brief);
@@ -3713,286 +3773,494 @@ Arjun is building a 4-hour MVP to showcase his skills to ${item.company.name}.
                 </div>
               </div>
             ) : deepResearchResult && (
-              /* Deep Research Content View */
-              <div className="fade-in-up" style={{ flex: 1, overflowY: 'auto', padding: '28px 32px', display: 'flex', flexDirection: 'column', gap: '22px' }}>
+              /* 5-Module Paginated Dossier View */
+              <div className="fade-in-up" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                 
-                {/* Notification Toasts */}
-                {enrollSuccessMessage && (
-                  <div style={{ backgroundColor: '#dcfce7', border: '1px solid #bbf7d0', color: '#15803d', padding: '12px 16px', borderRadius: '10px', fontSize: '0.9rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Check size={18} />
-                    <span>{enrollSuccessMessage}</span>
-                  </div>
-                )}
-                {copiedClaudeToast && (
-                  <div style={{ backgroundColor: '#ecfdf5', border: '1px solid #a7f3d0', color: '#047857', padding: '14px 18px', borderRadius: '10px', fontSize: '0.9rem', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', boxShadow: '0 4px 16px rgba(4, 120, 87, 0.15)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <Check size={18} />
-                      <span>📋 Full company context & MVP prompt copied! Press <strong>Ctrl + V</strong> (or <strong>Cmd + V</strong>) in your new AI tab to paste!</span>
-                    </div>
-                    <button 
-                      onClick={() => {
-                        const text = getClaudePromptText();
-                        navigator.clipboard.writeText(text);
-                      }}
-                      style={{ backgroundColor: '#047857', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}
-                    >
-                      Re-Copy Prompt 📋
-                    </button>
-                  </div>
-                )}
-                {showClaudePromptBox && (
-                  <div className="paper-card" style={{ padding: '20px', backgroundColor: 'var(--surface)', borderRadius: '12px', border: '1px solid var(--accent-gold)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--ink)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <Terminal size={16} color="#D97757" />
-                        <span>Claude AI Context Prompt</span>
-                      </div>
-                      <div style={{ display: 'flex', gap: '8px' }}>
-                        <button 
-                          onClick={() => {
-                            const text = getClaudePromptText();
-                            navigator.clipboard.writeText(text);
-                            setCopiedClaudeToast(true);
-                            setTimeout(() => setCopiedClaudeToast(false), 4000);
-                          }}
-                          className="font-mono"
-                          style={{ padding: '5px 12px', borderRadius: '6px', backgroundColor: 'var(--ink)', color: 'var(--paper)', border: 'none', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}
-                        >
-                          Copy Prompt 📋
-                        </button>
-                        <a 
-                          href="https://claude.ai/new" 
-                          target="_blank" 
-                          rel="noreferrer" 
-                          className="font-mono"
-                          style={{ padding: '5px 12px', borderRadius: '6px', backgroundColor: '#D97757', color: 'white', textDecoration: 'none', fontSize: '0.75rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                        >
-                          <span>Open Claude.ai</span>
-                          <ArrowUpRight size={12} />
-                        </a>
-                      </div>
-                    </div>
-
-                    <pre style={{ margin: 0, padding: '12px', backgroundColor: 'var(--paper)', borderRadius: '8px', border: '1px solid var(--border-light)', fontSize: '0.78rem', color: 'var(--ink)', whiteSpace: 'pre-wrap', maxHeight: '180px', overflowY: 'auto', fontFamily: 'monospace', lineHeight: 1.4 }}>
-                      {getClaudePromptText()}
-                    </pre>
-                  </div>
-                )}
-
-                {/* Company Header Bar with Direct Website Links */}
-                <div className="paper-card" style={{ padding: '18px 22px', backgroundColor: 'var(--surface)', borderRadius: '12px', border: '1px solid var(--border-light)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-                  <div>
-                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                      Stage: <strong>{deepResearchResult.stage || 'Seed / YC'}</strong> • Backing: <strong>{deepResearchResult.funding || 'YC Backed'}</strong>
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'flex', gap: '10px' }}>
-                    {deepResearchResult.original_company_url && (
-                      <a 
-                        href={deepResearchResult.original_company_url} 
-                        target="_blank" 
-                        rel="noreferrer" 
+                {/* Module Progress Tabs */}
+                <div style={{ padding: '16px 32px 0', borderBottom: '1px solid var(--border-light)', backgroundColor: 'var(--surface)', display: 'flex', gap: '4px', overflowX: 'auto' }}>
+                  {DOSSIER_MODULES.map((mod, idx) => {
+                    const isActive = idx === dossierModuleIndex;
+                    const isLoaded = !!dossierModuleData[mod.key] || (idx === 0 && deepResearchResult);
+                    return (
+                      <button
+                        key={mod.key}
+                        onClick={() => loadDossierModule(idx)}
                         className="font-mono"
-                        style={{ padding: '7px 14px', borderRadius: '8px', backgroundColor: 'var(--cream)', border: '1px solid var(--border-light)', color: 'var(--accent-gold)', textDecoration: 'none', fontWeight: 700, fontSize: '0.82rem', display: 'inline-flex', alignItems: 'center', gap: '5px' }}
+                        style={{
+                          padding: '8px 14px',
+                          borderRadius: '8px 8px 0 0',
+                          border: isActive ? '1px solid var(--border-light)' : 'none',
+                          borderBottom: isActive ? '2px solid var(--ink)' : '2px solid transparent',
+                          backgroundColor: isActive ? 'var(--paper)' : 'transparent',
+                          color: isActive ? 'var(--ink)' : 'var(--text-muted)',
+                          fontSize: '0.72rem',
+                          fontWeight: isActive ? 700 : 500,
+                          cursor: 'pointer',
+                          whiteSpace: 'nowrap',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                          transition: 'all 0.15s ease',
+                        }}
                       >
-                        <span>Official Website ({deepResearchResult.original_company_url.replace('https://', '').replace('http://', '').replace('www.', '').split('/')[0]})</span>
-                        <ArrowUpRight size={14} />
-                      </a>
-                    )}
-                    {deepResearchResult.careers_url && (
-                      <a 
-                        href={deepResearchResult.careers_url} 
-                        target="_blank" 
-                        rel="noreferrer" 
-                        className="font-mono"
-                        style={{ padding: '7px 14px', borderRadius: '8px', backgroundColor: 'var(--paper)', border: '1px solid var(--border)', color: 'var(--ink)', textDecoration: 'none', fontWeight: 600, fontSize: '0.82rem', display: 'inline-flex', alignItems: 'center', gap: '5px' }}
-                      >
-                        <span>Careers Page</span>
-                        <ArrowUpRight size={14} />
-                      </a>
-                    )}
-                  </div>
+                        <span>{mod.emoji}</span>
+                        <span>{idx + 1}. {mod.label}</span>
+                        {isLoaded && idx !== dossierModuleIndex && (
+                          <span style={{ width: '5px', height: '5px', borderRadius: '50%', backgroundColor: '#10b981', flexShrink: 0 }} />
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
 
-                {/* 1. What the Company Is About & What It Does */}
-                <div className="paper-card" style={{ padding: '22px 26px', backgroundColor: 'var(--paper)', borderRadius: '14px', border: '1px solid var(--border-light)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  <div style={{ fontSize: '0.78rem', color: 'var(--accent-gold)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                    1. About {deepResearchResult.company_name}
-                  </div>
-                  <h3 style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--ink)', margin: 0 }}>
-                    What the company is about & what it does
-                  </h3>
-                  <p style={{ fontSize: '0.94rem', color: 'var(--text-muted)', lineHeight: 1.6, margin: 0 }}>
-                    {deepResearchResult.company_overview || `${deepResearchResult.company_name} is a high-growth VC/YC-backed startup building core infrastructure and developer software. They empower engineering and product teams to automate workflows and scale operations.`}
-                  </p>
-                </div>
+                {/* Module Content Area */}
+                <div style={{ flex: 1, overflowY: 'auto', padding: '28px 32px' }}>
 
-                {/* 2. Actual Gaps Listed Out in Proper Detail & Simplest Language */}
-                <div className="paper-card" style={{ padding: '22px 26px', backgroundColor: 'var(--surface)', borderRadius: '14px', border: '1px solid var(--border-light)', borderLeft: '4px solid var(--accent-gold)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  <div style={{ fontSize: '0.78rem', color: 'var(--accent-gold)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                    2. Actual Gaps Identified (Simplest Language)
-                  </div>
-                  <h3 style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--ink)', margin: 0 }}>
-                    Real product & engineering friction found
-                  </h3>
-                  <div style={{ fontSize: '0.92rem', color: 'var(--ink)', lineHeight: 1.6, whiteSpace: 'pre-line' }}>
-                    {deepResearchResult.detailed_gaps || `1. Production log inspection friction: Engineering posts reveal manual effort watching terminal stdout streams.\n2. Developer Tooling Gap: Lack of visual real-time event logging delays incident triage.`}
-                  </div>
-
-                  <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontStyle: 'italic', backgroundColor: 'var(--cream)', padding: '10px 14px', borderRadius: '8px', border: '1px solid var(--border-light)', marginTop: '4px' }}>
-                    "{deepResearchResult.evidence_text}"
-                  </div>
-
-                  {deepResearchResult.source_url && (
-                    <a 
-                      href={deepResearchResult.source_url} 
-                      target="_blank" 
-                      rel="noreferrer" 
-                      className="font-mono"
-                      style={{ fontSize: '0.8rem', color: 'var(--accent-gold)', textDecoration: 'none', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}
-                    >
-                      <span>Verifiable Evidence Source Receipt ({deepResearchResult.source_url}) ↗</span>
-                    </a>
+                  {/* Success / copy toasts */}
+                  {enrollSuccessMessage && (
+                    <div style={{ marginBottom: '16px', backgroundColor: '#dcfce7', border: '1px solid #bbf7d0', color: '#15803d', padding: '10px 14px', borderRadius: '8px', fontSize: '0.88rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      ✓ {enrollSuccessMessage}
+                    </div>
                   )}
-                </div>
-
-                {/* 3. Suggest / Recommend 1-2 MVP / Artifact Options */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div>
-                      <div style={{ fontSize: '0.78rem', color: 'var(--accent-gold)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                        3. Recommended MVP / Artifact Options (Tailored to Your Skillset)
-                      </div>
-                      <h3 style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--ink)', margin: '2px 0 0 0' }}>
-                        Select what to build for {deepResearchResult.company_name}
-                      </h3>
+                  {copiedClaudeToast && (
+                    <div style={{ marginBottom: '16px', backgroundColor: '#ecfdf5', border: '1px solid #a7f3d0', color: '#047857', padding: '10px 14px', borderRadius: '8px', fontSize: '0.88rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      📋 Context copied! Paste into your AI of choice.
                     </div>
-                  </div>
+                  )}
+                  {isLoadingDossierModule && (
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '16px', padding: '60px 0', color: 'var(--text-muted)' }}>
+                      <div className="pulse-cooking" style={{ width: '40px', height: '40px', borderRadius: '50%', border: '3px solid var(--border-light)', borderTopColor: 'var(--accent-gold)' }} />
+                      <div style={{ fontSize: '0.9rem', fontWeight: 600 }}>Fetching {DOSSIER_MODULES[dossierModuleIndex]?.label}...</div>
+                    </div>
+                  )}
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                    {/* Option 1 Card */}
-                    {(() => {
-                      const opt1 = deepResearchResult.mvp_options?.option_1 || {
-                        title: `Visual Telemetry Inspector & Debug Console`,
-                        what_it_does: `Build a real-time web console that streams request logs and flags payload anomalies visually.`,
-                        why_creates_value: `Eliminates manual stdout log watching for ${deepResearchResult.company_name}'s dev team, showing you deeply understand their workflow.`,
-                        scope_days: `1-2 days`,
-                        skills_leveraged: `React, TypeScript, Webhooks`
-                      };
-                      const isSelected = selectedMvpOptionIndex === 0;
-
-                      return (
-                        <div 
-                          onClick={() => setSelectedMvpOptionIndex(0)}
-                          className="paper-card"
-                          style={{
-                            padding: '20px',
-                            borderRadius: '12px',
-                            backgroundColor: isSelected ? 'rgba(152, 118, 26, 0.08)' : 'var(--paper)',
-                            border: `2px solid ${isSelected ? 'var(--accent-gold)' : 'var(--border-light)'}`,
-                            cursor: 'pointer',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: '10px',
-                            position: 'relative'
-                          }}
-                        >
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ fontSize: '0.75rem', padding: '2px 8px', borderRadius: '12px', backgroundColor: 'var(--ink)', color: 'var(--paper)', fontWeight: 700 }}>
-                              Option A (Recommended)
-                            </span>
-                            <span className="font-mono" style={{ fontSize: '0.75rem', color: 'var(--accent-gold)', fontWeight: 700 }}>
-                              {opt1.scope_days || '1-2 days'}
-                            </span>
+                  {/* ── MODULE 1: Company Intelligence ── */}
+                  {!isLoadingDossierModule && dossierModuleIndex === 0 && (() => {
+                    const d = dossierModuleData['identity'] || deepResearchResult;
+                    const desc = d?.plain_english_description || d?.company_overview || '';
+                    const stack = d?.tech_stack || d?.tech_stack_tags || [];
+                    const features = d?.key_features || [];
+                    const sources = d?.sources_used || d?.identity_sources || [];
+                    const confidence = d?.data_confidence || 'computing';
+                    return (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <div>
+                            <div className="font-mono" style={{ fontSize: '0.68rem', color: 'var(--accent-gold)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '4px' }}>Module 1 of 5 — Company Intelligence</div>
+                            <h3 className="font-serif" style={{ margin: 0, fontSize: '1.5rem', color: 'var(--ink)' }}>What is {deepResearchResult.company_name}?</h3>
                           </div>
+                          <span className="font-mono" style={{ fontSize: '0.7rem', padding: '3px 10px', borderRadius: '20px', backgroundColor: confidence === 'high' ? '#ecfdf5' : confidence === 'medium' ? '#fef3c7' : '#f3f4f6', color: confidence === 'high' ? '#047857' : confidence === 'medium' ? '#b45309' : '#6b7280', border: `1px solid ${confidence === 'high' ? '#a7f3d0' : confidence === 'medium' ? '#fde68a' : '#e5e7eb'}`, fontWeight: 700 }}>
+                            {confidence === 'high' ? '✓ High Confidence' : confidence === 'medium' ? '~ Medium Confidence' : '⟳ Computing...'}
+                          </span>
+                        </div>
 
-                          <div style={{ fontWeight: 700, fontSize: '1.02rem', color: 'var(--ink)' }}>
-                            {opt1.title}
+                        {/* Plain English Description */}
+                        <div style={{ backgroundColor: 'var(--cream)', border: '1px solid var(--border-light)', borderRadius: '12px', padding: '24px' }}>
+                          <div className="font-mono" style={{ fontSize: '0.65rem', color: 'var(--accent-gold)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '10px' }}>Plain English — What They Actually Do</div>
+                          <p style={{ margin: 0, fontSize: '1.0rem', color: 'var(--ink)', lineHeight: 1.7, fontWeight: 500 }}>
+                            {desc || `Deep research is computing for ${deepResearchResult.company_name}. If results are loading, try clicking another module first then return.`}
+                          </p>
+                        </div>
+
+                        {/* Tech Stack */}
+                        {stack.length > 0 && (
+                          <div>
+                            <div className="font-mono" style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '10px' }}>Tech Stack</div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                              {stack.map((tech: string, i: number) => (
+                                <span key={i} className="font-mono" style={{ padding: '4px 12px', borderRadius: '6px', backgroundColor: 'var(--surface)', border: '1px solid var(--border-light)', fontSize: '0.8rem', fontWeight: 600, color: 'var(--ink)' }}>{tech}</span>
+                              ))}
+                            </div>
                           </div>
+                        )}
 
-                          <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.45 }}>
-                            <strong>What to build:</strong> {opt1.what_it_does}
+                        {/* Key Features */}
+                        {features.length > 0 && (
+                          <div>
+                            <div className="font-mono" style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '10px' }}>Core Product Features</div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                              {features.map((feat: string, i: number) => (
+                                <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '10px 14px', backgroundColor: 'var(--surface)', borderRadius: '8px', border: '1px solid var(--border-light)' }}>
+                                  <span style={{ color: 'var(--accent-gold)', fontWeight: 700, flexShrink: 0 }}>→</span>
+                                  <span style={{ fontSize: '0.88rem', color: 'var(--ink)', lineHeight: 1.5 }}>{feat}</span>
+                                </div>
+                              ))}
+                            </div>
                           </div>
+                        )}
 
-                          <div style={{ fontSize: '0.83rem', color: 'var(--ink)', backgroundColor: 'var(--cream)', padding: '8px 10px', borderRadius: '6px', borderLeft: '3px solid var(--accent-gold)', lineHeight: 1.4 }}>
-                            <strong>Why CTO feels value:</strong> {opt1.why_creates_value}
+                        {/* Business Model */}
+                        {(d?.business_model && d.business_model !== 'Unknown') && (
+                          <div style={{ padding: '12px 16px', backgroundColor: 'var(--surface)', borderRadius: '8px', border: '1px solid var(--border-light)', display: 'flex', gap: '10px', alignItems: 'center' }}>
+                            <span className="font-mono" style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>Business Model</span>
+                            <span style={{ fontSize: '0.88rem', color: 'var(--ink)', fontWeight: 600 }}>{d.business_model}</span>
                           </div>
+                        )}
 
-                          <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }} className="font-mono">
-                            Skills: {opt1.skills_leveraged}
+                        {/* Sources */}
+                        {sources.length > 0 && (
+                          <div>
+                            <div className="font-mono" style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '8px' }}>Data Sources Used</div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                              {sources.slice(0, 4).map((src: string, i: number) => (
+                                <a key={i} href={src} target="_blank" rel="noreferrer" style={{ fontSize: '0.78rem', color: 'var(--accent-gold)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '6px', fontFamily: 'monospace' }}>
+                                  🔗 <span style={{ textDecoration: 'underline' }}>{src.length > 70 ? src.slice(0, 70) + '…' : src}</span>
+                                </a>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+
+                  {/* ── MODULE 2: Competitor Matrix ── */}
+                  {!isLoadingDossierModule && dossierModuleIndex === 1 && (() => {
+                    const d = dossierModuleData['competitors'];
+                    if (!d) return (
+                      <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--text-muted)' }}>
+                        <div style={{ fontSize: '2rem', marginBottom: '12px' }}>⚔️</div>
+                        <div style={{ fontWeight: 600, marginBottom: '8px' }}>Competitor Matrix Not Loaded Yet</div>
+                        <button onClick={() => loadDossierModule(1)} className="font-mono" style={{ padding: '8px 20px', borderRadius: '8px', backgroundColor: 'var(--ink)', color: 'var(--paper)', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: '0.82rem' }}>Load Competitor Analysis</button>
+                      </div>
+                    );
+                    const competitors = d.competitors_found || [];
+                    const matrix = d.matrix || [];
+                    const churn = d.churn_signals || [];
+                    return (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                        <div>
+                          <div className="font-mono" style={{ fontSize: '0.68rem', color: 'var(--accent-gold)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '4px' }}>Module 2 of 5 — Competitor Matrix</div>
+                          <h3 className="font-serif" style={{ margin: 0, fontSize: '1.5rem', color: 'var(--ink)' }}>Where {deepResearchResult.company_name} Stands vs. Competitors</h3>
+                        </div>
+
+                        {competitors.length > 0 && (
+                          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                            <span className="font-mono" style={{ fontSize: '0.72rem', color: 'var(--text-muted)', alignSelf: 'center', fontWeight: 600 }}>Competitors:</span>
+                            {competitors.map((c: string, i: number) => (
+                              <span key={i} style={{ padding: '4px 12px', borderRadius: '6px', backgroundColor: '#fee2e2', border: '1px solid #fca5a5', fontSize: '0.8rem', fontWeight: 700, color: '#b91c1c' }}>{c}</span>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Feature Matrix Table */}
+                        {matrix.length > 0 ? (
+                          <div style={{ borderRadius: '12px', border: '1px solid var(--border-light)', overflow: 'hidden' }}>
+                            {matrix.map((row: any, i: number) => (
+                              <div key={i} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', padding: '14px 18px', backgroundColor: i % 2 === 0 ? 'var(--surface)' : 'var(--paper)', borderBottom: i < matrix.length - 1 ? '1px solid var(--border-light)' : 'none', gap: '12px', alignItems: 'start' }}>
+                                <div>
+                                  <div style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--ink)' }}>{row.dimension}</div>
+                                  {row.target_note && <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '3px', lineHeight: 1.4 }}>{row.target_note}</div>}
+                                </div>
+                                <div className="font-mono" style={{ fontSize: '0.8rem', fontWeight: 700, color: row.target_status === 'available' ? '#047857' : row.target_status === 'missing' ? '#b91c1c' : '#b45309', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                  {row.target_status === 'available' ? '✅' : row.target_status === 'missing' ? '❌' : '⚠️'}
+                                  <span style={{ textTransform: 'uppercase', fontSize: '0.68rem' }}>{row.target_status}</span>
+                                </div>
+                                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>
+                                  {row.competitors_have_it?.length > 0 ? `✅ ${row.competitors_have_it.join(', ')}` : '—'}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div style={{ padding: '20px', backgroundColor: 'var(--surface)', borderRadius: '8px', border: '1px solid var(--border-light)', color: 'var(--text-muted)', fontSize: '0.88rem' }}>
+                            {d.note || 'No competitor feature matrix could be built from available data.'}
+                          </div>
+                        )}
+
+                        {/* Churn Signals */}
+                        {churn.length > 0 && (
+                          <div>
+                            <div className="font-mono" style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '10px' }}>Real Churn Signals — Why Users Left</div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                              {churn.map((c: any, i: number) => (
+                                <div key={i} style={{ padding: '14px 18px', backgroundColor: '#fef3c7', borderRadius: '10px', border: '1px solid #fde68a' }}>
+                                  <blockquote style={{ margin: '0 0 8px 0', fontSize: '0.9rem', color: '#92400e', fontStyle: 'italic', lineHeight: 1.6 }}>"{c.quote}"</blockquote>
+                                  {c.source_url && <a href={c.source_url} target="_blank" rel="noreferrer" className="font-mono" style={{ fontSize: '0.72rem', color: '#b45309', textDecoration: 'underline' }}>🔗 Source ↗</a>}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Sources */}
+                        {d.sources_used?.length > 0 && (
+                          <div>
+                            <div className="font-mono" style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '8px' }}>Sources</div>
+                            {d.sources_used.slice(0, 4).map((src: string, i: number) => (
+                              <a key={i} href={src} target="_blank" rel="noreferrer" style={{ display: 'block', fontSize: '0.75rem', color: 'var(--accent-gold)', textDecoration: 'underline', fontFamily: 'monospace', marginBottom: '4px' }}>🔗 {src.length > 70 ? src.slice(0, 70) + '…' : src}</a>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+
+                  {/* ── MODULE 3: Market Complaints ── */}
+                  {!isLoadingDossierModule && dossierModuleIndex === 2 && (() => {
+                    const d = dossierModuleData['complaints'];
+                    if (!d) return (
+                      <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--text-muted)' }}>
+                        <div style={{ fontSize: '2rem', marginBottom: '12px' }}>🔴</div>
+                        <div style={{ fontWeight: 600, marginBottom: '8px' }}>Market Complaints Not Loaded Yet</div>
+                        <button onClick={() => loadDossierModule(2)} className="font-mono" style={{ padding: '8px 20px', borderRadius: '8px', backgroundColor: 'var(--ink)', color: 'var(--paper)', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: '0.82rem' }}>Load Complaint Analysis</button>
+                      </div>
+                    );
+                    const complaints = d.complaints || [];
+                    const topFriction = d.top_friction_area;
+                    const totalSignals = d.total_signals_found || 0;
+                    const SOURCE_ICON: Record<string, string> = { 'reddit': '🟠', 'github_issue': '⚫', 'hacker_news': '🟡', 'g2_review': '🔵', 'web_article': '🌐' };
+                    return (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
+                          <div>
+                            <div className="font-mono" style={{ fontSize: '0.68rem', color: 'var(--accent-gold)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '4px' }}>Module 3 of 5 — Market Complaints</div>
+                            <h3 className="font-serif" style={{ margin: 0, fontSize: '1.5rem', color: 'var(--ink)' }}>What Real Users Are Saying</h3>
+                          </div>
+                          <div className="font-mono" style={{ textAlign: 'right', flexShrink: 0 }}>
+                            <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--ink)' }}>{totalSignals}</div>
+                            <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 600 }}>SIGNALS FOUND</div>
                           </div>
                         </div>
-                      );
-                    })()}
 
-                    {/* Option 2 Card */}
-                    {(() => {
-                      const opt2 = deepResearchResult.mvp_options?.option_2 || {
-                        title: `Automated Webhook & Request Proxy Middleware`,
-                        what_it_does: `Build a lightweight proxy tool that captures API payloads and validates status codes in real time.`,
-                        why_creates_value: `Saves engineering hours during integration testing and demonstrates proactive technical problem-solving.`,
-                        scope_days: `2-3 days`,
-                        skills_leveraged: `FastAPI, Python, Async HTTP`
-                      };
-                      const isSelected = selectedMvpOptionIndex === 1;
-
-                      return (
-                        <div 
-                          onClick={() => setSelectedMvpOptionIndex(1)}
-                          className="paper-card"
-                          style={{
-                            padding: '20px',
-                            borderRadius: '12px',
-                            backgroundColor: isSelected ? 'rgba(152, 118, 26, 0.08)' : 'var(--paper)',
-                            border: `2px solid ${isSelected ? 'var(--accent-gold)' : 'var(--border-light)'}`,
-                            cursor: 'pointer',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: '10px',
-                            position: 'relative'
-                          }}
-                        >
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ fontSize: '0.75rem', padding: '2px 8px', borderRadius: '12px', backgroundColor: 'var(--surface)', color: 'var(--ink)', border: '1px solid var(--border-light)', fontWeight: 700 }}>
-                              Option B (Alternative)
-                            </span>
-                            <span className="font-mono" style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 700 }}>
-                              {opt2.scope_days || '2-3 days'}
-                            </span>
+                        {topFriction && topFriction !== 'Unknown' && (
+                          <div style={{ padding: '14px 18px', backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: '10px', display: 'flex', gap: '10px', alignItems: 'center' }}>
+                            <span style={{ fontSize: '1.2rem' }}>🔥</span>
+                            <div>
+                              <div className="font-mono" style={{ fontSize: '0.65rem', color: '#dc2626', fontWeight: 700, textTransform: 'uppercase', marginBottom: '2px' }}>Top Friction Area</div>
+                              <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#7f1d1d' }}>{topFriction}</div>
+                            </div>
                           </div>
+                        )}
 
-                          <div style={{ fontWeight: 700, fontSize: '1.02rem', color: 'var(--ink)' }}>
-                            {opt2.title}
+                        {complaints.length === 0 && (
+                          <div style={{ padding: '20px', backgroundColor: 'var(--surface)', borderRadius: '10px', border: '1px solid var(--border-light)', color: 'var(--text-muted)', fontSize: '0.9rem', lineHeight: 1.6 }}>
+                            {d.note || `No public complaints found for ${deepResearchResult.company_name}. This company may be very early-stage or stealth. See Module 4 for competitor gap analysis.`}
                           </div>
+                        )}
 
-                          <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.45 }}>
-                            <strong>What to build:</strong> {opt2.what_it_does}
-                          </div>
+                        {complaints.map((c: any, i: number) => {
+                          const icon = SOURCE_ICON[c.source_type] || '🌐';
+                          const catColors: Record<string, string> = { 'Bug': '#fee2e2', 'Performance': '#fef3c7', 'Missing Feature': '#eff6ff', 'DX Friction': '#f0fdf4', 'Integration': '#faf5ff', 'Pricing': '#fff7ed', 'Documentation': '#f8fafc' };
+                          const catColor = catColors[c.category] || '#f8fafc';
+                          return (
+                            <div key={i} style={{ padding: '20px', borderRadius: '12px', backgroundColor: catColor, border: '1px solid var(--border-light)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
+                                <span className="font-mono" style={{ fontSize: '0.68rem', fontWeight: 700, padding: '3px 10px', borderRadius: '6px', backgroundColor: 'var(--surface)', border: '1px solid var(--border-light)', color: 'var(--ink)' }}>{c.category || 'Friction'}</span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <span className="font-mono" style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{icon} {c.source_type?.replace('_', ' ')}</span>
+                                  {c.date && <span className="font-mono" style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{c.date}</span>}
+                                  {c.engagement_count > 0 && <span className="font-mono" style={{ fontSize: '0.68rem', color: '#047857', fontWeight: 700 }}>👍 {c.engagement_count}</span>}
+                                </div>
+                              </div>
+                              {c.exact_quote && (
+                                <blockquote style={{ margin: 0, fontSize: '0.92rem', color: 'var(--ink)', fontStyle: 'italic', lineHeight: 1.7, borderLeft: '3px solid var(--accent-gold)', paddingLeft: '14px' }}>
+                                  "{c.exact_quote}"
+                                </blockquote>
+                              )}
+                              {c.impact_description && (
+                                <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>{c.impact_description}</p>
+                              )}
+                              {c.source_url && (
+                                <a href={c.source_url} target="_blank" rel="noreferrer" className="font-mono" style={{ fontSize: '0.72rem', color: 'var(--accent-gold)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                  🔗 View Source ↗
+                                </a>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
 
-                          <div style={{ fontSize: '0.83rem', color: 'var(--ink)', backgroundColor: 'var(--cream)', padding: '8px 10px', borderRadius: '6px', borderLeft: '3px solid var(--accent-gold)', lineHeight: 1.4 }}>
-                            <strong>Why CTO feels value:</strong> {opt2.why_creates_value}
-                          </div>
-
-                          <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }} className="font-mono">
-                            Skills: {opt2.skills_leveraged}
-                          </div>
+                  {/* ── MODULE 4: Gap Analysis ── */}
+                  {!isLoadingDossierModule && dossierModuleIndex === 3 && (() => {
+                    const d = dossierModuleData['gap_analysis'];
+                    if (!d) return (
+                      <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--text-muted)' }}>
+                        <div style={{ fontSize: '2rem', marginBottom: '12px' }}>⚡</div>
+                        <div style={{ fontWeight: 600, marginBottom: '8px' }}>Gap Analysis Not Loaded Yet</div>
+                        <button onClick={() => loadDossierModule(3)} className="font-mono" style={{ padding: '8px 20px', borderRadius: '8px', backgroundColor: 'var(--ink)', color: 'var(--paper)', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: '0.82rem' }}>Load Gap Analysis</button>
+                      </div>
+                    );
+                    const gaps = d.gap_opportunities || [];
+                    const competitorsAnalyzed = d.competitors_analyzed || [];
+                    return (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                        <div>
+                          <div className="font-mono" style={{ fontSize: '0.68rem', color: 'var(--accent-gold)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '4px' }}>Module 4 of 5 — Gap Analysis</div>
+                          <h3 className="font-serif" style={{ margin: 0, fontSize: '1.5rem', color: 'var(--ink)' }}>What {deepResearchResult.company_name} is Missing</h3>
                         </div>
-                      );
-                    })()}
-                  </div>
+
+                        {/* Honest labeling */}
+                        {d.confidence_note && (
+                          <div style={{ padding: '12px 16px', backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', fontSize: '0.82rem', color: '#1e40af', lineHeight: 1.5 }}>
+                            ℹ️ {d.confidence_note}
+                          </div>
+                        )}
+
+                        {competitorsAnalyzed.length > 0 && (
+                          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                            <span className="font-mono" style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600 }}>Benchmarked against:</span>
+                            {competitorsAnalyzed.map((c: string, i: number) => (
+                              <span key={i} style={{ padding: '3px 10px', borderRadius: '6px', backgroundColor: 'var(--surface)', border: '1px solid var(--border-light)', fontSize: '0.78rem', fontWeight: 600, color: 'var(--ink)' }}>{c}</span>
+                            ))}
+                          </div>
+                        )}
+
+                        {gaps.length === 0 && (
+                          <div style={{ padding: '20px', backgroundColor: 'var(--surface)', borderRadius: '10px', border: '1px solid var(--border-light)', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+                            No specific gaps could be identified from available competitor data. This may indicate strong feature parity.
+                          </div>
+                        )}
+
+                        {gaps.map((gap: any, i: number) => (
+                          <div key={i} style={{ padding: '22px', borderRadius: '14px', backgroundColor: 'var(--cream)', border: '1px solid var(--border-light)', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
+                              <div>
+                                <div className="font-mono" style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '4px' }}>Gap #{i + 1}</div>
+                                <div style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--ink)' }}>{gap.gap_title}</div>
+                              </div>
+                              {gap.effort_estimate && (
+                                <span className="font-mono" style={{ flexShrink: 0, fontSize: '0.7rem', padding: '4px 10px', borderRadius: '6px', backgroundColor: 'var(--surface)', border: '1px solid var(--border-light)', fontWeight: 700, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                                  ⏱ {gap.effort_estimate}
+                                </span>
+                              )}
+                            </div>
+                            <div style={{ backgroundColor: 'var(--surface)', padding: '12px 16px', borderRadius: '8px', border: '1px solid var(--border-light)' }}>
+                              <div className="font-mono" style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '6px' }}>What Competitors Have</div>
+                              <div style={{ fontSize: '0.88rem', color: 'var(--ink)', lineHeight: 1.5 }}>{gap.what_competitors_have}</div>
+                            </div>
+                            <div>
+                              <div className="font-mono" style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '6px' }}>Why It Matters to Users</div>
+                              <p style={{ margin: 0, fontSize: '0.88rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>{gap.why_it_matters}</p>
+                            </div>
+                            {gap.evidence_url && (
+                              <a href={gap.evidence_url} target="_blank" rel="noreferrer" className="font-mono" style={{ fontSize: '0.72rem', color: 'var(--accent-gold)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                🔗 Competitor Evidence ↗
+                              </a>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+
+                  {/* ── MODULE 5: Your Alignment ── */}
+                  {!isLoadingDossierModule && dossierModuleIndex === 4 && (() => {
+                    const d = dossierModuleData['alignment'];
+                    if (!d) return (
+                      <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--text-muted)' }}>
+                        <div style={{ fontSize: '2rem', marginBottom: '12px' }}>🎯</div>
+                        <div style={{ fontWeight: 600, marginBottom: '8px' }}>Alignment Analysis Not Loaded Yet</div>
+                        <button onClick={() => loadDossierModule(4)} className="font-mono" style={{ padding: '8px 20px', borderRadius: '8px', backgroundColor: 'var(--ink)', color: 'var(--paper)', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: '0.82rem' }}>Load My Alignment</button>
+                      </div>
+                    );
+                    const score = Math.round((d.skill_overlap_score || 0) * 100);
+                    const vectors = d.opportunity_vectors || [];
+                    const matched = d.matched_skills || [];
+                    const gaps = d.gaps_to_learn || [];
+                    const VECTOR_COLORS: Record<string, string> = { 'Frontend/UI': '#eff6ff', 'Backend/Infrastructure': '#f0fdf4', 'Integration/Ecosystem': '#faf5ff' };
+                    return (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                        <div>
+                          <div className="font-mono" style={{ fontSize: '0.68rem', color: 'var(--accent-gold)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '4px' }}>Module 5 of 5 — Your Alignment</div>
+                          <h3 className="font-serif" style={{ margin: 0, fontSize: '1.5rem', color: 'var(--ink)' }}>How You Match {deepResearchResult.company_name}'s Gaps</h3>
+                        </div>
+
+                        {/* Score card */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '16px', alignItems: 'center' }}>
+                          <div style={{ textAlign: 'center', padding: '24px', backgroundColor: score >= 70 ? '#ecfdf5' : score >= 40 ? '#fef3c7' : '#f3f4f6', borderRadius: '14px', border: `2px solid ${score >= 70 ? '#a7f3d0' : score >= 40 ? '#fde68a' : '#e5e7eb'}` }}>
+                            <div style={{ fontSize: '2.5rem', fontWeight: 800, color: score >= 70 ? '#047857' : score >= 40 ? '#b45309' : '#6b7280' }}>{score}%</div>
+                            <div className="font-mono" style={{ fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', color: score >= 70 ? '#047857' : score >= 40 ? '#b45309' : '#6b7280', marginTop: '4px' }}>Skill Overlap</div>
+                          </div>
+                          <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--ink)', lineHeight: 1.7 }}>{d.match_summary}</p>
+                        </div>
+
+                        {/* Matched skills */}
+                        {matched.length > 0 && (
+                          <div>
+                            <div className="font-mono" style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '10px' }}>Your Matched Skills</div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                              {matched.map((s: string, i: number) => <span key={i} style={{ padding: '4px 12px', borderRadius: '6px', backgroundColor: '#ecfdf5', border: '1px solid #a7f3d0', fontSize: '0.8rem', fontWeight: 600, color: '#047857' }}>{s}</span>)}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Gaps to learn */}
+                        {gaps.length > 0 && (
+                          <div>
+                            <div className="font-mono" style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '10px' }}>To Learn for Full Fit</div>
+                            {gaps.map((g: any, i: number) => (
+                              <div key={i} style={{ padding: '10px 14px', borderRadius: '8px', backgroundColor: '#fef3c7', border: '1px solid #fde68a', marginBottom: '8px' }}>
+                                <span style={{ fontWeight: 700, color: '#92400e', fontSize: '0.88rem' }}>{g.skill}</span>
+                                <span style={{ color: '#b45309', fontSize: '0.82rem' }}> — {g.reason} ({g.learning_time})</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* 3 Opportunity Vectors */}
+                        {vectors.length > 0 && (
+                          <div>
+                            <div className="font-mono" style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '12px' }}>3 Strategic Opportunity Vectors</div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                              {vectors.map((v: any, i: number) => (
+                                <div key={i} style={{ padding: '20px', borderRadius: '12px', backgroundColor: VECTOR_COLORS[v.vector_type] || '#f8fafc', border: '1px solid var(--border-light)' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+                                    <span className="font-mono" style={{ fontSize: '0.68rem', padding: '3px 10px', borderRadius: '6px', backgroundColor: 'var(--surface)', border: '1px solid var(--border-light)', fontWeight: 700, color: 'var(--ink)' }}>{v.vector_type}</span>
+                                    <span style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--ink)' }}>{v.title}</span>
+                                  </div>
+                                  <p style={{ margin: '0 0 10px 0', fontSize: '0.87rem', color: 'var(--ink)', lineHeight: 1.6 }}>{v.description}</p>
+                                  {v.primary_skills_needed?.length > 0 && (
+                                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                                      {v.primary_skills_needed.map((s: string, j: number) => <span key={j} style={{ padding: '2px 8px', borderRadius: '4px', backgroundColor: 'var(--surface)', border: '1px solid var(--border-light)', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)' }}>{s}</span>)}
+                                    </div>
+                                  )}
+                                  {v.gap_addressed && <div style={{ marginTop: '8px', fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>↳ Addresses: {v.gap_addressed}</div>}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+
                 </div>
 
-                {/* Bottom Action Controls: Single Full-Width Enroll Button */}
-                <div style={{ marginTop: '10px' }}>
-                  <button 
-                    onClick={handleEnrollAndGoToOutreach}
-                    className="btn-primary font-mono"
-                    style={{ width: '100%', padding: '16px 24px', fontSize: '0.95rem', fontWeight: 700, borderRadius: '12px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px', backgroundColor: 'var(--ink)', color: 'var(--paper)', cursor: 'pointer', boxShadow: '0 4px 16px rgba(0,0,0,0.15)' }}
+                {/* Module Navigation Footer */}
+                <div style={{ padding: '16px 32px', borderTop: '1px solid var(--border-light)', backgroundColor: 'var(--surface)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <button
+                    onClick={() => dossierModuleIndex > 0 && loadDossierModule(dossierModuleIndex - 1)}
+                    disabled={dossierModuleIndex === 0}
+                    className="font-mono"
+                    style={{ padding: '8px 18px', borderRadius: '8px', backgroundColor: 'var(--paper)', border: '1px solid var(--border-light)', color: dossierModuleIndex === 0 ? 'var(--text-dim)' : 'var(--ink)', cursor: dossierModuleIndex === 0 ? 'not-allowed' : 'pointer', fontWeight: 600, fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '6px' }}
                   >
-                    <Zap size={18} />
-                    <span>Enroll in Selected Option & Draft Outreach →</span>
+                    ← Previous
                   </button>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    {DOSSIER_MODULES.map((_, idx) => (
+                      <div key={idx} onClick={() => loadDossierModule(idx)} style={{ width: idx === dossierModuleIndex ? '20px' : '8px', height: '8px', borderRadius: '4px', backgroundColor: idx === dossierModuleIndex ? 'var(--ink)' : 'var(--border-light)', cursor: 'pointer', transition: 'all 0.2s ease' }} />
+                    ))}
+                  </div>
+                  <button
+                    onClick={() => dossierModuleIndex < DOSSIER_MODULES.length - 1 && loadDossierModule(dossierModuleIndex + 1)}
+                    disabled={dossierModuleIndex === DOSSIER_MODULES.length - 1}
+                    className="font-mono btn-primary"
+                    style={{ padding: '8px 18px', borderRadius: '8px', backgroundColor: dossierModuleIndex < DOSSIER_MODULES.length - 1 ? 'var(--ink)' : 'var(--surface)', border: '1px solid var(--border-light)', color: dossierModuleIndex < DOSSIER_MODULES.length - 1 ? 'var(--paper)' : 'var(--text-dim)', cursor: dossierModuleIndex === DOSSIER_MODULES.length - 1 ? 'not-allowed' : 'pointer', fontWeight: 600, fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '6px' }}
+                  >
+                    Next Module →
+                  </button>
+                  {dossierModuleIndex === DOSSIER_MODULES.length - 1 && (
+                    <button
+                      onClick={handleEnrollAndGoToOutreach}
+                      className="font-mono btn-primary"
+                      style={{ padding: '8px 18px', borderRadius: '8px', backgroundColor: 'var(--accent-gold)', border: 'none', color: 'var(--ink)', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', boxShadow: '0 2px 8px rgba(152,118,26,0.25)' }}
+                    >
+                      <span>⚡ Enroll & Draft Outreach →</span>
+                    </button>
+                  )}
                 </div>
               </div>
             )}
