@@ -483,6 +483,20 @@ export const apiClient = {
   },
 
   /**
+   * Fetch specific deep research dossier module (identity, competitors, complaints, gap-analysis, alignment)
+   */
+  async fetchDossierModule(companyId: string, moduleEndpoint: string, userId?: string): Promise<any> {
+    const url = moduleEndpoint === 'alignment' && userId
+      ? `${BASE_URL}/company/${companyId}/deep-research/${moduleEndpoint}?user_id=${userId}`
+      : `${BASE_URL}/company/${companyId}/deep-research/${moduleEndpoint}`;
+    const res = await safeFetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    return await res.json();
+  },
+
+  /**
    * Step 10: Enrolls user in builder workflow & tracker
    */
   async enrollCompany(companyId: string, userId?: string): Promise<any> {

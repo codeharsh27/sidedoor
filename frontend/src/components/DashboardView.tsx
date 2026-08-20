@@ -1499,49 +1499,38 @@ const generateDynamicResearchForCompany = (compName: string, companyItem: any) =
         // Reset dossier to Module 1 and store company id for module loading
         setDossierModuleIndex(0);
         setDossierModuleData({});
-        if (resultObj.module_urls) {
-          // Store company id from module_urls for later module fetches
-          const identityUrl: string = resultObj.module_urls?.identity || '';
-          const parts = identityUrl.split('/');
-          const compIdx = parts.findIndex((p: string) => p === 'company');
-          if (compIdx !== -1 && parts[compIdx + 1]) {
-            setCurrentCompanyId(parts[compIdx + 1]);
-          }
-        }
+        const targetId = compId || (resultObj.company_name ? resultObj.company_name.toLowerCase().replace(/[^a-z0-9\-_]/g, '') : null);
+        setCurrentCompanyId(targetId);
       }
     }
   };
 
   // Load a specific dossier module from the backend
   const loadDossierModule = async (moduleIndex: number, compId?: string) => {
-    const targetCompId = compId || currentCompanyId;
-    if (!targetCompId) return;
+    const rawTarget = compId || currentCompanyId || deepResearchResult?.company_name || activeCompany || 'target';
+    const targetCompId = String(rawTarget).toLowerCase().replace(/[^a-z0-9\-_]/g, '');
+
     const module = DOSSIER_MODULES[moduleIndex];
     if (!module) return;
 
+    // Switch tab index IMMEDIATELY so the UI changes tabs instantly
+    setDossierModuleIndex(moduleIndex);
+
     // Return cached if already loaded
     if (dossierModuleData[module.key]) {
-      setDossierModuleIndex(moduleIndex);
       return;
     }
 
     setIsLoadingDossierModule(true);
     try {
-      const BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || 'https://sidedoor.onrender.com';
-      const endpoint = module.key === 'alignment'
-        ? `${BASE_URL}/company/${targetCompId}/deep-research/${module.endpoint}${currentUserId ? `?user_id=${currentUserId}` : ''}`
-        : `${BASE_URL}/company/${targetCompId}/deep-research/${module.endpoint}`;
-
-      const resp = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
-      if (resp.ok) {
-        const data = await resp.json();
+      const data = await apiClient.fetchDossierModule(targetCompId, module.endpoint, currentUserId);
+      if (data) {
         setDossierModuleData(prev => ({ ...prev, [module.key]: data }));
       }
     } catch (err) {
       console.warn('Dossier module fetch failed for', module.key, err);
     } finally {
       setIsLoadingDossierModule(false);
-      setDossierModuleIndex(moduleIndex);
     }
   };
 
