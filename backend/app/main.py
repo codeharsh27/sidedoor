@@ -29,25 +29,9 @@ async def lifespan(app: FastAPI):
     # It will load lazily on the first request instead.
     logger.info("Application starting up (ML models will load lazily).")
 
-    # Run Alembic migrations and seed database programmatically (skipped in test mode)
+    # Seed the database if the curated PM company feed is empty (skipped in test mode)
     import sys
     if "pytest" not in sys.modules:
-        logger.info("Running pending database migrations...")
-        try:
-            import asyncio
-            from alembic.config import Config
-            from alembic import command
-            
-            def upgrade_db():
-                alembic_cfg = Config("alembic.ini")
-                command.upgrade(alembic_cfg, "head")
-                
-            await asyncio.to_thread(upgrade_db)
-            logger.info("Database migrations complete.")
-        except Exception as e:
-            logger.error(f"Failed to run database migrations: {e}")
-
-        # Seed the database if the curated PM company feed is empty
         try:
             from sqlalchemy import select, func, text
             from app.db.session import async_session_factory
