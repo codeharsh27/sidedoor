@@ -17,7 +17,6 @@ from functools import lru_cache
 
 import asyncio
 import functools
-from sentence_transformers import SentenceTransformer
 
 from app.services.resume_parser import ProfileData
 
@@ -35,6 +34,7 @@ class Embedder:
 
     def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
         logger.info("Loading embedding model: %s", model_name)
+        from sentence_transformers import SentenceTransformer
         self._model = SentenceTransformer(model_name)
         self._dimensions = self._model.get_sentence_embedding_dimension()
         logger.info(
