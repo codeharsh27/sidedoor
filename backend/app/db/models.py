@@ -247,3 +247,93 @@ class DossierCache(Base):
 
     # Relationships
     company: Mapped["Company"] = relationship(back_populates="dossier_cache")
+
+
+# ==========================================
+# PM Accelerator Models
+# ==========================================
+
+class PMCompanyFeed(Base):
+    """pm_company_feed table — curated VC-backed startup PM job listings."""
+    __tablename__ = "pm_company_feed"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, server_default=text("gen_random_uuid()"))
+    company_name: Mapped[str] = mapped_column(Text, nullable=False)
+    company_url: Mapped[str] = mapped_column(Text, nullable=False)
+    role_title: Mapped[str] = mapped_column(Text, nullable=False)
+    apply_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    feed_type: Mapped[str] = mapped_column(Text, nullable=False)
+    source: Mapped[str] = mapped_column(Text, nullable=False)
+    vc_backed: Mapped[bool] = mapped_column(nullable=False, default=True, server_default=text("true"))
+    vc_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    india_remote: Mapped[str] = mapped_column(Text, nullable=False, default="india", server_default=text("'india'"))
+    is_active: Mapped[bool] = mapped_column(nullable=False, default=True, server_default=text("true"))
+    added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), server_default=text("now()"))
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AcceleratorProgress(Base):
+    """accelerator_progress table — per-user daily sprint state."""
+    __tablename__ = "accelerator_progress"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, server_default=text("gen_random_uuid()"))
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    day_number: Mapped[int] = mapped_column(nullable=False)
+    phase: Mapped[str] = mapped_column(Text, nullable=False)
+    date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    blocks_required: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False)
+    blocks_done: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list, server_default=text("ARRAY[]::text[]"))
+    streak_count: Mapped[int] = mapped_column(nullable=False, default=0, server_default=text("0"))
+    streak_broken: Mapped[bool] = mapped_column(nullable=False, default=False, server_default=text("false"))
+    eod_submitted: Mapped[bool] = mapped_column(nullable=False, default=False, server_default=text("false"))
+    eod_reflection: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AcceleratorBlockLog(Base):
+    """accelerator_block_logs table — individual block start/complete records."""
+    __tablename__ = "accelerator_block_logs"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, server_default=text("gen_random_uuid()"))
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    day_number: Mapped[int] = mapped_column(nullable=False)
+    block_type: Mapped[str] = mapped_column(Text, nullable=False)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), server_default=text("now()"))
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    time_spent_sec: Mapped[int | None] = mapped_column(nullable=True)
+    answer_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    self_score: Mapped[int | None] = mapped_column(nullable=True)
+    rubric_feedback: Mapped[str | None] = mapped_column(Text, nullable=True)
+    was_late: Mapped[bool] = mapped_column(nullable=False, default=False, server_default=text("false"))
+
+
+class AcceleratorNetworkLog(Base):
+    """accelerator_network_log table — daily network action tracking."""
+    __tablename__ = "accelerator_network_log"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, server_default=text("gen_random_uuid()"))
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    day_number: Mapped[int] = mapped_column(nullable=False)
+    action_index: Mapped[int] = mapped_column(nullable=False)
+    action_type: Mapped[str] = mapped_column(Text, nullable=False)
+    target_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    target_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    completed: Mapped[bool] = mapped_column(nullable=False, default=False, server_default=text("false"))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AcceleratorApplyLog(Base):
+    """accelerator_apply_log table — per-day application tracking."""
+    __tablename__ = "accelerator_apply_log"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, server_default=text("gen_random_uuid()"))
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    day_number: Mapped[int] = mapped_column(nullable=False)
+    company_feed_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    company_name: Mapped[str] = mapped_column(Text, nullable=False)
+    apply_type: Mapped[str] = mapped_column(Text, nullable=False)
+    portal_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    applied: Mapped[bool] = mapped_column(nullable=False, default=False, server_default=text("false"))
+    applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)

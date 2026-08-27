@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import type { User } from '@supabase/supabase-js';
 import type { OpportunityCardView, FixabilityFlags, UserProfile, BountyItem } from '../types/schema';
 import { CompanyLogo } from './CompanyLogo';
 import { apiClient } from '../api/client';
 import { useAuth, getUserDisplayName, getUserInitials } from '../lib/useAuth';
 import {
-  Terminal, Search, ShieldAlert,
+  Terminal, Search, ShieldAlert, Target,
   ArrowUpRight, Building2, PanelLeftClose, PanelLeftOpen,
   PanelRightClose, PanelRightOpen, ArrowLeft, Link as LinkIcon, Send, Zap, Settings, Check, LogOut, MapPin, Calendar,
   ChevronRight, ArrowRight, RefreshCw, X, Compass, Kanban, Coins, Sparkles
@@ -873,6 +874,7 @@ export const DEFAULT_OPPORTUNITIES: BountyItem[] = [
 ];
 
 export const DashboardView: React.FC<DashboardViewProps> = ({ userProfile, supabaseUser: supabaseUserProp, onBackToLanding }) => {
+  const navigate = useNavigate();
   const { user: authUser, signOut } = useAuth();
   const supabaseUser = supabaseUserProp ?? authUser;
 
@@ -2138,6 +2140,29 @@ Arjun is building a 4-hour MVP to showcase his skills to ${item.company.name}.
               <span style={{ flex: 1 }}>Startup Feed</span>
               <span className="font-mono" style={{ fontSize: '0.7rem', padding: '2px 6px', borderRadius: '5px', backgroundColor: mainTab === 'feed' && viewMode === 'dashboard' ? 'var(--paper)' : 'var(--surface)', color: 'var(--text-dim)', fontWeight: 600 }}>
                 {discoveryFeed.length}
+              </span>
+            </button>
+
+            {/* 2. PM Accelerator Hub */}
+            <button
+              onClick={() => { navigate('/hub'); }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '11px', padding: '9px 12px', borderRadius: '8px',
+                backgroundColor: 'transparent',
+                borderLeft: '3px solid transparent',
+                borderTop: '1px solid transparent',
+                borderRight: '1px solid transparent',
+                borderBottom: '1px solid transparent',
+                color: 'var(--text-muted)',
+                fontWeight: 500, 
+                fontSize: '0.88rem', cursor: 'pointer', textAlign: 'left',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <Target size={17} color="var(--text-dim)" />
+              <span style={{ flex: 1 }}>PM Accelerator</span>
+              <span className="font-mono" style={{ fontSize: '0.7rem', padding: '2px 6px', borderRadius: '5px', backgroundColor: 'var(--surface)', color: 'var(--text-dim)', fontWeight: 600 }}>
+                45 Days
               </span>
             </button>
           </div>

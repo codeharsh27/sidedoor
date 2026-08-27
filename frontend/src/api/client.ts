@@ -576,3 +576,69 @@ export const apiClient = {
     return await res.json();
   },
 };
+
+// ==========================================
+// PM Accelerator API Client
+// ==========================================
+
+import type {
+  DailyBriefResponse,
+  BlockStartRequest,
+  BlockStartResponse,
+  BlockCompleteRequest,
+  BlockCompleteResponse,
+  StreakResponse,
+  CompanyFeedResponse,
+  EODSubmitRequest,
+  EODSubmitResponse,
+  ProgressMapResponse,
+} from '../types/schema';
+
+export const acceleratorApi = {
+  getToday: async (userId: string): Promise<DailyBriefResponse> => {
+    const res = await safeFetch(`${BASE_URL}/accelerator/today?user_id=${encodeURIComponent(userId)}`);
+    return res.json();
+  },
+
+  startBlock: async (req: BlockStartRequest): Promise<BlockStartResponse> => {
+    const res = await safeFetch(`${BASE_URL}/accelerator/block/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req),
+    });
+    return res.json();
+  },
+
+  completeBlock: async (req: BlockCompleteRequest): Promise<BlockCompleteResponse> => {
+    const res = await safeFetch(`${BASE_URL}/accelerator/block/complete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req),
+    });
+    return res.json();
+  },
+
+  getStreak: async (userId: string): Promise<StreakResponse> => {
+    const res = await safeFetch(`${BASE_URL}/accelerator/streak?user_id=${encodeURIComponent(userId)}`);
+    return res.json();
+  },
+
+  getCompaniesToday: async (userId: string): Promise<CompanyFeedResponse> => {
+    const res = await safeFetch(`${BASE_URL}/accelerator/companies/today?user_id=${encodeURIComponent(userId)}`);
+    return res.json();
+  },
+
+  submitEOD: async (req: EODSubmitRequest): Promise<EODSubmitResponse> => {
+    const res = await safeFetch(`${BASE_URL}/accelerator/eod/submit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req),
+    });
+    return res.json();
+  },
+
+  getProgress: async (userId: string): Promise<ProgressMapResponse> => {
+    const res = await safeFetch(`${BASE_URL}/accelerator/progress?user_id=${encodeURIComponent(userId)}`);
+    return res.json();
+  },
+};

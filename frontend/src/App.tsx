@@ -6,6 +6,7 @@ import { LandingPage } from "./pages/LandingPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { LoginPage } from "./pages/LoginPage";
 import { OnboardingPage } from "./pages/OnboardingPage";
+import { PMHubPage } from "./pages/PMHubPage";
 import { useAuth, hasCompletedOnboarding } from "./lib/useAuth";
 
 export function App() {
@@ -115,6 +116,14 @@ export function App() {
             element={
               user
                 ? <DashboardPage />
+                : <LoginPage onBackToLanding={() => navigate("/")} />
+            }
+          />
+          <Route
+            path="/hub"
+            element={
+              user
+                ? <PMHubPage />
                 : <LoginPage onBackToLanding={() => navigate("/")} />
             }
           />
