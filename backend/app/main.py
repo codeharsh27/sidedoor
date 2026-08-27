@@ -29,6 +29,46 @@ async def lifespan(app: FastAPI):
     # It will load lazily on the first request instead.
     logger.info("Application starting up (ML models will load lazily).")
 
+    # Run Alembic migrations and seed database programmatically (skipped in test mode)
+    import sys
+    if "pytest" not in sys.modules:
+        logger.info("Running pending database migrations...")
+        try:
+            from alembic.config import Config
+            from alembic import command
+            alembic_cfg = Config("alembic.ini")
+            command.upgrade(alembic_cfg, "head")
+            logger.info("Database migrations complete.")
+        except Exception as e:
+            logger.error(f"Failed to run database migrations: {e}")
+
+        # Seed the database if the curated PM company feed is empty
+        try:
+            from sqlalchemy import select, func, text
+            from app.db.session import async_session_factory
+            from app.db.models import PMCompanyFeed
+            import os
+            
+            async with async_session_factory() as session:
+                count_res = await session.execute(select(func.count()).select_from(PMCompanyFeed))
+                count = count_res.scalar()
+                if count == 0:
+                    logger.info("pm_company_feed table is empty. Seeding...")
+                    base_dir = os.path.dirname(os.path.abspath(__file__))
+                    sql_path = os.path.join(base_dir, "data", "pm_company_feed_seed.sql")
+                    if os.path.exists(sql_path):
+                        with open(sql_path, "r", encoding="utf-8") as f:
+                            sql = f.read()
+                        await session.execute(text(sql))
+                        await session.commit()
+                        logger.info("Successfully seeded pm_company_feed table.")
+                    else:
+                        logger.warning(f"Seed SQL file not found at {sql_path}")
+                else:
+                    logger.info(f"pm_company_feed table already has {count} rows.")
+        except Exception as e:
+            logger.error(f"Failed to seed database during startup: {e}")
+
     yield
 
     # Shutdown: nothing to clean up for now
