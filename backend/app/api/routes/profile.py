@@ -179,7 +179,15 @@ async def _run_parse_pipeline(
     user_result = await session.execute(select(User).where(User.id == user_id))
     user = user_result.scalar_one_or_none()
     if user is None:
-        raise HTTPException(status_code=404, detail=f"User {user_id} not found.")
+        user = User(
+            id=user_id,
+            email=f"auto_created_{user_id}@example.com",
+            name="Accelerator User",
+            password_hash=""
+        )
+        session.add(user)
+        await session.flush()
+        logger.info("Auto-created missing user row in profile onboarding: %s", user_id)
 
     # Step 4: Upsert user_profiles row
     profile_result = await session.execute(

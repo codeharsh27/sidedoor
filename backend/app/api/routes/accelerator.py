@@ -199,10 +199,15 @@ async def get_today_brief(
     user_res = await session.execute(select(User).where(User.id == user_uuid))
     user = user_res.scalar_one_or_none()
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"User {user_id} not found."
+        user = User(
+            id=user_uuid,
+            email=f"auto_created_{user_id}@example.com",
+            name="Accelerator User",
+            password_hash=""
         )
+        session.add(user)
+        await session.flush()
+        logger.info(f"Auto-created missing user row for ID: {user_id}")
         
     progress = await get_or_create_today_progress(user_uuid, session)
     day_curriculum = CURRICULUM[progress.day_number]
