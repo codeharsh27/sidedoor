@@ -34,10 +34,15 @@ async def lifespan(app: FastAPI):
     if "pytest" not in sys.modules:
         logger.info("Running pending database migrations...")
         try:
+            import asyncio
             from alembic.config import Config
             from alembic import command
-            alembic_cfg = Config("alembic.ini")
-            command.upgrade(alembic_cfg, "head")
+            
+            def upgrade_db():
+                alembic_cfg = Config("alembic.ini")
+                command.upgrade(alembic_cfg, "head")
+                
+            await asyncio.to_thread(upgrade_db)
             logger.info("Database migrations complete.")
         except Exception as e:
             logger.error(f"Failed to run database migrations: {e}")
